@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 // ═══════════════════════════════════════════════════════════════
 // OSRS FARMING ROUTE OPTIMIZER v3
@@ -758,34 +758,15 @@ function getAllRouteItems(route) {
 // ═══════════════════════════════════════════════════════════════
 // PROFILE
 // ═══════════════════════════════════════════════════════════════
-// Preloaded profile based on user's actual account
+// Blank default — user must configure before first run
 function defaultProfile() {
-  const quests = {};
-  QUESTS.forEach(q => quests[q.id] = true);
-  return {
-    quests,
-    diaries: {
-      falador: "Medium", ardougne: "Medium", kandarin: "Medium",
-      morytania: "Medium", karamja: "Easy", kourend: "Easy",
-      lumbridge: "Medium", fremennik: "Easy", western: "Easy",
-      varrock: "Medium", desert: "Easy",
-    },
-    teleports: {
-      explorerRing: true, ardougneCloak: true, ectophial: true,
-      spiritTree: true, fairyRing: true, xericTalisman: true,
-      skillsNecklace: true, combatBracelet: true, gamesNecklace: true,
-      ringOfWealth: true, amuletOfGlory: true, necklaceOfPassage: true,
-      slayerRing: true, teleportCrystal: true,
-      standardSpellbook: true, lunarSpellbook: true,
-      stonyBasalt: true, icyBasalt: true,
-      quetzalWhistle: true, kharedstsMemoirs: true,
-      pendantOfAtes: true, ringOfElements: true,
-    },
-    unlocks: {
-      farmingGuild: true, prifAccess: true, fossilIsland: true,
-      harmonyIsland: true, varlamoreAccess: true,
-    },
-  };
+  return { quests: {}, diaries: {}, teleports: {}, unlocks: {} };
+}
+function isProfileEmpty(p) {
+  return !Object.values(p.quests).some(Boolean) &&
+    !Object.values(p.teleports).some(Boolean) &&
+    !Object.values(p.unlocks).some(Boolean) &&
+    !Object.values(p.diaries).some(v => v && v !== "None");
 }
 function loadProfile() { try { const s = localStorage.getItem("osrs_fp_v4"); if (s) return JSON.parse(s); } catch(e){} return defaultProfile(); }
 function saveProfile(p) { localStorage.setItem("osrs_fp_v4", JSON.stringify(p)); }
@@ -1011,8 +992,6 @@ export default function App() {
   const [cropSelections, setCropSelections] = useState({});
   const [first, setFirst] = useState(() => { try { return !localStorage.getItem("osrs_fp_v4"); } catch { return true; } });
 
-  useEffect(() => { /* Don't auto-open profile since we preload defaults */ }, [first]);
-
   const handleSave = p => { setProf(p); setFirst(false); };
   const toggleType = id => setSelTypes(p => p.includes(id) ? p.filter(t => t !== id) : [...p, id]);
   const go = () => {
@@ -1073,6 +1052,35 @@ export default function App() {
       <main style={{ maxWidth: 800, margin: "0 auto", padding: "24px 16px" }}>
         {!showRoute && !showCropSelect ? (
           <>
+            {/* Profile setup banner */}
+            {isProfileEmpty(prof) && (
+              <div onClick={() => setShowProf(true)} style={{
+                marginBottom: 24, padding: 20, borderRadius: 12, cursor: "pointer",
+                background: "linear-gradient(135deg, #2a1a08, #1a1208)",
+                border: "2px solid #c9a84c88",
+                boxShadow: "0 0 20px rgba(201,168,76,0.15)",
+                animation: "fadeIn 0.4s ease-out",
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{
+                    width: 44, height: 44, borderRadius: "50%", flexShrink: 0,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    background: "linear-gradient(135deg, #c9a84c, #8b7028)",
+                    fontSize: 22,
+                  }}>⚙</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontFamily: "'Cinzel', serif", fontSize: 15, fontWeight: 700, color: "#e0c97f", marginBottom: 2 }}>
+                      Set Up Your Account Profile
+                    </div>
+                    <div style={{ fontSize: 12, color: "#998860" }}>
+                      Tell us your quests, diaries, teleports, and unlocks so we can calculate the fastest routes for your account.
+                    </div>
+                  </div>
+                  <div style={{ color: "#c9a84c", fontSize: 20, flexShrink: 0 }}>→</div>
+                </div>
+              </div>
+            )}
+
             <div style={{ marginBottom: 28 }}>
               <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 16, color: "#c9a84c", marginBottom: 6 }}>Select Patch Types</h2>
               <p style={{ color: "#666", fontSize: 13, marginBottom: 16 }}>Choose which patches to include in your farming run</p>
@@ -1093,17 +1101,23 @@ export default function App() {
                 })}
               </div>
             </div>
-            <button onClick={go} disabled={!selTypes.length} style={{ width: "100%", padding: 16, borderRadius: 12, border: "none", background: selTypes.length ? "linear-gradient(135deg, #c9a84c, #8b7028)" : "#333", color: selTypes.length ? "#1a1a1a" : "#666", fontSize: 16, fontWeight: 800, fontFamily: "'Cinzel', serif", letterSpacing: 1, cursor: selTypes.length ? "pointer" : "not-allowed", boxShadow: selTypes.length ? "0 4px 20px rgba(201,168,76,0.3)" : "none" }}>
-              {selTypes.length ? "Generate Optimal Route →" : "Select at Least One Patch Type"}
+            <button onClick={go} disabled={!selTypes.length || isProfileEmpty(prof)} style={{ width: "100%", padding: 16, borderRadius: 12, border: "none", background: selTypes.length && !isProfileEmpty(prof) ? "linear-gradient(135deg, #c9a84c, #8b7028)" : "#333", color: selTypes.length && !isProfileEmpty(prof) ? "#1a1a1a" : "#666", fontSize: 16, fontWeight: 800, fontFamily: "'Cinzel', serif", letterSpacing: 1, cursor: selTypes.length && !isProfileEmpty(prof) ? "pointer" : "not-allowed", boxShadow: selTypes.length && !isProfileEmpty(prof) ? "0 4px 20px rgba(201,168,76,0.3)" : "none" }}>
+              {isProfileEmpty(prof) ? "⚙ Set Up Profile First" : selTypes.length ? "Generate Optimal Route →" : "Select at Least One Patch Type"}
             </button>
-            <div style={{ marginTop: 28, padding: 16, background: "#1a1a1a", borderRadius: 10, border: "1px solid #2a2a2a" }}>
+            <div style={{ marginTop: 28, padding: 16, background: "#1a1a1a", borderRadius: 10, border: `1px solid ${isProfileEmpty(prof) ? "#44220088" : "#2a2a2a"}` }}>
               <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 13, color: "#888", marginBottom: 10, textTransform: "uppercase", letterSpacing: 1 }}>Profile Summary</h3>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 16, fontSize: 12, color: "#666" }}>
-                <span><strong style={{ color: "#e0c97f" }}>{Object.values(prof.quests).filter(Boolean).length}</strong> quests</span>
-                <span><strong style={{ color: "#e0c97f" }}>{Object.values(prof.diaries).filter(v => v && v !== "None").length}</strong> diaries</span>
-                <span><strong style={{ color: "#e0c97f" }}>{Object.values(prof.teleports).filter(Boolean).length}</strong> teleports</span>
-                <span><strong style={{ color: "#e0c97f" }}>{Object.values(prof.unlocks).filter(Boolean).length}</strong> unlocks</span>
-              </div>
+              {isProfileEmpty(prof) ? (
+                <div style={{ fontSize: 12, color: "#665533", fontStyle: "italic" }}>
+                  No profile configured yet. Click "Edit Profile" or the banner above to get started.
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 16, fontSize: 12, color: "#666" }}>
+                  <span><strong style={{ color: "#e0c97f" }}>{Object.values(prof.quests).filter(Boolean).length}</strong> quests</span>
+                  <span><strong style={{ color: "#e0c97f" }}>{Object.values(prof.diaries).filter(v => v && v !== "None").length}</strong> diaries</span>
+                  <span><strong style={{ color: "#e0c97f" }}>{Object.values(prof.teleports).filter(Boolean).length}</strong> teleports</span>
+                  <span><strong style={{ color: "#e0c97f" }}>{Object.values(prof.unlocks).filter(Boolean).length}</strong> unlocks</span>
+                </div>
+              )}
             </div>
           </>
         ) : showCropSelect && !showRoute ? (
