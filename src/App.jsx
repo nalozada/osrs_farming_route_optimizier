@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 // ═══════════════════════════════════════════════════════════════
 // OSRS FARMING ROUTE OPTIMIZER v3
@@ -1010,6 +1010,8 @@ export default function App() {
   const [showCropSelect, setShowCropSelect] = useState(false);
   const [cropSelections, setCropSelections] = useState({});
   const [first, setFirst] = useState(() => { try { return !localStorage.getItem("osrs_fp_v4"); } catch { return true; } });
+
+  useEffect(() => { /* Don't auto-open profile since we preload defaults */ }, [first]);
 
   const handleSave = p => { setProf(p); setFirst(false); };
   const toggleType = id => setSelTypes(p => p.includes(id) ? p.filter(t => t !== id) : [...p, id]);
