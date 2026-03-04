@@ -25,6 +25,7 @@ const QUESTS = [
   { id: "childrenOfTheSun", name: "Children of the Sun" },
   { id: "desertTreasureII", name: "Desert Treasure II" },
   { id: "thePath", name: "The Path of Glouphrie" },
+  { id: "aKingdomDivided", name: "A Kingdom Divided" },
 ];
 
 const DIARIES = [
@@ -49,7 +50,7 @@ const TELEPORTS = [
   { id: "ardougneCloak", name: "Ardougne Cloak 2+", cat: "diary" },
   { id: "ectophial", name: "Ectophial", cat: "quest" },
   { id: "spiritTree", name: "Spirit Trees (base network)", cat: "transport",
-    desc: "Gnome Stronghold, Tree Gnome Village, Grand Exchange, Khazard Battlefield" },
+    desc: "TP to Varrock GE first, then use network: Gnome Stronghold, TGV, Khazard Battlefield" },
   { id: "spiritTreeFarmingGuild", name: "Spirit Tree: Farming Guild (planted)", cat: "planted",
     desc: "Requires 83 Farming + spirit tree planted" },
   { id: "spiritTreePrif", name: "Spirit Tree: Prifddinas", cat: "planted",
@@ -80,19 +81,21 @@ const TELEPORTS = [
   { id: "icyBasalt", name: "Icy Basalt", cat: "item" },
   { id: "farmingCape", name: "Farming Cape (99)", cat: "item" },
   { id: "quetzalWhistle", name: "Quetzal Whistle", cat: "item" },
-  { id: "kharedstsMemoirs", name: "Kharedst's Memoirs", cat: "item" },
+  { id: "kharedstsMemoirs", name: "Kharedst's Memoirs / Book of the Dead", cat: "item" },
   { id: "pendantOfAtes", name: "Pendant of Ates", cat: "item" },
   { id: "ringOfElements", name: "Ring of the Elements", cat: "jewellery" },
   { id: "questPointCape", name: "Quest Point Cape", cat: "item" },
 ];
 
 const OTHER_UNLOCKS = [
-  { id: "farmingGuild", name: "Farming Guild Access (65 Farming)" },
-  { id: "farmingGuild85", name: "Farming Guild Tier 2 (85 Farming)" },
+  { id: "farmingGuild45", name: "Farming Guild Beginner (45 Farming)" },
+  { id: "farmingGuild", name: "Farming Guild Intermediate (65 Farming)" },
+  { id: "farmingGuild85", name: "Farming Guild Advanced (85 Farming)" },
   { id: "prifAccess", name: "Prifddinas Access" },
   { id: "fossilIsland", name: "Fossil Island Access" },
   { id: "harmonyIsland", name: "Harmony Island Access" },
   { id: "varlamoreAccess", name: "Varlamore Access" },
+  { id: "kastoriQuetzal", name: "Quetzal landing site at Kastori" },
 ];
 
 // ═══════════════════════════════════════════════════════════════
@@ -145,7 +148,7 @@ const PATCHES = [
     farmingItems: [{ name: "Seed", slots: 1 }],
     teleports: [
       { method: "Xeric's Talisman → Xeric's Glade", requires: { teleports: ["xericTalisman"] }, speed: 1, items: ["Xeric's Talisman"] },
-      { method: "Kharedst's Memoirs → Lancalliums", requires: { teleports: ["kharedstsMemoirs"] }, speed: 2, items: ["Kharedst's Memoirs"] },
+      { method: "Memoirs/Book of the Dead → Lancalliums", requires: { teleports: ["kharedstsMemoirs"] }, speed: 2, items: ["Memoirs/Book of the Dead"] },
       { method: "Spirit Tree → Hosidius (45 Agi shortcut)", requires: { teleports: ["spiritTreeHosidius"] }, speed: 3, items: [] },
       { method: "Fairy Ring AKR → Vinery, run west", requires: { teleports: ["fairyRing"] }, speed: 4, items: ["Dramen/Lunar staff"] },
     ], notes: "Disease-free w/ Easy Kourend Diary. +5% yield w/ Hard." },
@@ -171,7 +174,7 @@ const PATCHES = [
     teleports: [
       { method: "Harmony Island Teleport (Arceuus)", requires: { teleports: ["ancientSpellbook"] }, speed: 2, items: ["Runes (Arceuus)"] },
       { method: "Ectophial → docks → boat", requires: { teleports: ["ectophial"] }, speed: 5, items: ["Ectophial"] },
-    ], requirements: { diaries: { morytania: "Elite" } },
+    ], requirements: { diaries: { morytania: "Elite" }, unlocks: ["harmonyIsland"] },
     notes: "Disease-free. Req: Elite Morytania Diary." },
   { id: "herb_farmingGuild", name: "Farming Guild", type: "herb",
     proximityGroup: "farming_guild", region: "Kourend", routePriority: 5,
@@ -180,7 +183,7 @@ const PATCHES = [
       { method: "Farming Cape teleport", requires: { teleports: ["farmingCape"] }, speed: 1, items: ["Farming Cape"] },
       { method: "Skills Necklace → Farming Guild", requires: { teleports: ["skillsNecklace"] }, speed: 1, items: ["Skills Necklace"] },
       { method: "Spirit Tree → Farming Guild", requires: { teleports: ["spiritTreeFarmingGuild"] }, speed: 2, items: [] },
-      { method: "Fairy Ring CIR, run SW", requires: { teleports: ["fairyRing"] }, speed: 4, items: ["Dramen/Lunar staff"] },
+      { method: "Fairy Ring CIR, run SW", requires: { teleports: ["fairyRing"] }, speed: 3, items: ["Dramen/Lunar staff"] },
     ], requirements: { unlocks: ["farmingGuild"] },
     notes: "+5% yield w/ Hard Kourend Diary. Req: 65 Farming." },
   { id: "herb_varlamore", name: "Civitas illa Fortis", type: "herb",
@@ -233,7 +236,7 @@ const PATCHES = [
     teleports: [
       { method: "Skills Necklace → Farming Guild", requires: { teleports: ["skillsNecklace"] }, speed: 1, items: ["Skills Necklace"] },
       { method: "Farming Cape teleport", requires: { teleports: ["farmingCape"] }, speed: 1, items: ["Farming Cape"] },
-    ], requirements: { unlocks: ["farmingGuild"] }, notes: null },
+    ], requirements: { unlocks: ["farmingGuild45"] }, notes: null },
   { id: "allot_prif", name: "Prifddinas", type: "allotment",
     proximityGroup: "prifddinas", region: "Tirannwn", routePriority: 18,
     farmingItems: [{ name: "Seeds ×3", slots: 1 }, { name: "Compost", slots: 1 }],
@@ -264,7 +267,7 @@ const PATCHES = [
   { id: "flower_catherby", name: "Catherby", type: "flower", proximityGroup: "catherby_area", region: "Kandarin", routePriority: 30, farmingItems: [{ name: "Flower seed", slots: 1 }], teleports: [{ method: "Catherby Teleport (Lunar)", requires: { teleports: ["lunarSpellbook"] }, speed: 1, items: ["Runes (Lunar)"] }], notes: null },
   { id: "flower_ardougne", name: "Ardougne (North)", type: "flower", proximityGroup: "ardougne_north", region: "Kandarin", routePriority: 25, farmingItems: [{ name: "Flower seed", slots: 1 }], teleports: [{ method: "Ardougne Cloak 2+", requires: { teleports: ["ardougneCloak"] }, speed: 1, items: ["Ardougne Cloak 2+"] }], notes: null },
   { id: "flower_hosidius", name: "Hosidius", type: "flower", proximityGroup: "hosidius", region: "Kourend", routePriority: 35, farmingItems: [{ name: "Flower seed", slots: 1 }], teleports: [{ method: "Xeric's Talisman → Glade", requires: { teleports: ["xericTalisman"] }, speed: 1, items: ["Xeric's Talisman"] }], notes: null },
-  { id: "flower_farmingGuild", name: "Farming Guild", type: "flower", proximityGroup: "farming_guild", region: "Kourend", routePriority: 5, farmingItems: [{ name: "Flower seed", slots: 1 }], teleports: [{ method: "Skills Necklace → FG", requires: { teleports: ["skillsNecklace"] }, speed: 1, items: ["Skills Necklace"] }], requirements: { unlocks: ["farmingGuild"] }, notes: null },
+  { id: "flower_farmingGuild", name: "Farming Guild", type: "flower", proximityGroup: "farming_guild", region: "Kourend", routePriority: 5, farmingItems: [{ name: "Flower seed", slots: 1 }], teleports: [{ method: "Skills Necklace → FG", requires: { teleports: ["skillsNecklace"] }, speed: 1, items: ["Skills Necklace"] }], requirements: { unlocks: ["farmingGuild45"] }, notes: null },
   { id: "flower_prif", name: "Prifddinas", type: "flower", proximityGroup: "prifddinas", region: "Tirannwn", routePriority: 18, farmingItems: [{ name: "Flower seed", slots: 1 }], teleports: [{ method: "Spirit Tree → Prif", requires: { teleports: ["spiritTreePrif"] }, speed: 1, items: [] }, { method: "Teleport Crystal → Prif", requires: { teleports: ["teleportCrystal"] }, speed: 2, items: ["Teleport Crystal"] }], requirements: { quests: ["songOfElves"], unlocks: ["prifAccess"] }, notes: null },
   { id: "flower_varlamore", name: "Civitas illa Fortis", type: "flower", proximityGroup: "civitas", region: "Varlamore", routePriority: 40, farmingItems: [{ name: "Flower seed", slots: 1 }], teleports: [{ method: "Quetzal Whistle", requires: { teleports: ["quetzalWhistle"] }, speed: 2, items: ["Quetzal Whistle"] }], requirements: { unlocks: ["varlamoreAccess"] }, notes: null },
 
@@ -294,14 +297,14 @@ const PATCHES = [
     proximityGroup: "taverley_tree", region: "Asgarnia", routePriority: 25,
     farmingItems: [{ name: "Sapling", slots: 1 }, { name: "Payment", slots: 1 }],
     teleports: [
-      { method: "Games Necklace → Burthorpe, run south", requires: { teleports: ["gamesNecklace"] }, speed: 2, items: ["Games Necklace"] },
-      { method: "Falador Teleport, run NW", requires: { teleports: ["standardSpellbook"] }, speed: 4, items: ["Law rune", "Air runes", "Water rune"] },
+      { method: "Falador Teleport, run NW through gate", requires: { teleports: ["standardSpellbook"] }, speed: 2, items: ["Law rune", "Air runes", "Water rune"] },
+      { method: "Games Necklace → Burthorpe, run south", requires: { teleports: ["gamesNecklace"] }, speed: 3, items: ["Games Necklace"] },
     ], notes: null },
   { id: "tree_gnomeStronghold", name: "Gnome Stronghold", type: "tree",
     proximityGroup: "gnome_stronghold", region: "Kandarin", routePriority: 30,
     farmingItems: [{ name: "Sapling", slots: 1 }, { name: "Payment", slots: 1 }],
     teleports: [
-      { method: "Spirit Tree → Gnome Stronghold", requires: { teleports: ["spiritTree"] }, speed: 1, items: [] },
+      { method: "Spirit Tree (via GE) → Gnome Stronghold", requires: { teleports: ["spiritTree"] }, speed: 1, items: [] },
       { method: "Slayer Ring → Stronghold Slayer Cave", requires: { teleports: ["slayerRing"] }, speed: 1, items: ["Slayer Ring"] },
       { method: "Royal Seed Pod", requires: { teleports: ["royalSeedPod"] }, speed: 1, items: ["Royal Seed Pod"] },
       { method: "Necklace of Passage → Outpost, run NE", requires: { teleports: ["necklaceOfPassage"] }, speed: 3, items: ["Necklace of Passage"] },
@@ -313,6 +316,13 @@ const PATCHES = [
       { method: "Skills Necklace → Farming Guild", requires: { teleports: ["skillsNecklace"] }, speed: 1, items: ["Skills Necklace"] },
       { method: "Farming Cape teleport", requires: { teleports: ["farmingCape"] }, speed: 1, items: ["Farming Cape"] },
     ], requirements: { unlocks: ["farmingGuild"] }, notes: "Req: 65 Farming." },
+  { id: "tree_auburnvale", name: "Auburnvale", type: "tree",
+    proximityGroup: "auburnvale_tree", region: "Varlamore", routePriority: 35,
+    farmingItems: [{ name: "Sapling", slots: 1 }, { name: "Payment", slots: 1 }],
+    teleports: [
+      { method: "Quetzal Whistle → Varlamore, run east", requires: { teleports: ["quetzalWhistle"] }, speed: 2, items: ["Quetzal Whistle"] },
+    ], requirements: { quests: ["childrenOfTheSun"], unlocks: ["varlamoreAccess"] },
+    notes: "Req: Children of the Sun." },
 
   // ═══ FRUIT TREE PATCHES ═══
   // Gnome Stronghold fruit tree shares proximityGroup with tree patch
@@ -320,7 +330,7 @@ const PATCHES = [
     proximityGroup: "gnome_stronghold", region: "Kandarin", routePriority: 10,
     farmingItems: [{ name: "Sapling", slots: 1 }, { name: "Payment", slots: 1 }],
     teleports: [
-      { method: "Spirit Tree → Gnome Stronghold", requires: { teleports: ["spiritTree"] }, speed: 1, items: [] },
+      { method: "Spirit Tree (via GE) → Gnome Stronghold", requires: { teleports: ["spiritTree"] }, speed: 1, items: [] },
       { method: "Royal Seed Pod", requires: { teleports: ["royalSeedPod"] }, speed: 1, items: ["Royal Seed Pod"] },
       { method: "Slayer Ring → Stronghold Slayer Cave", requires: { teleports: ["slayerRing"] }, speed: 1, items: ["Slayer Ring"] },
     ], notes: null },
@@ -344,6 +354,7 @@ const PATCHES = [
     farmingItems: [{ name: "Sapling", slots: 1 }, { name: "Payment", slots: 1 }],
     teleports: [
       { method: "Spirit Tree → Brimhaven (planted)", requires: { teleports: ["spiritTreeBrimhaven"] }, speed: 1, items: [] },
+      { method: "Charter ship from Catherby (if already there)", requires: {}, speed: 2, items: ["Coins (charter fee)"], charterFromCatherby: true },
       { method: "Amulet of Glory → Karamja, walk west", requires: { teleports: ["amuletOfGlory"] }, speed: 3, items: ["Amulet of Glory"] },
       { method: "Fairy Ring BJR", requires: { teleports: ["fairyRing"] }, speed: 4, items: ["Dramen/Lunar staff"] },
     ], notes: null },
@@ -360,13 +371,21 @@ const PATCHES = [
       { method: "Skills Necklace → Farming Guild", requires: { teleports: ["skillsNecklace"] }, speed: 1, items: ["Skills Necklace"] },
       { method: "Farming Cape teleport", requires: { teleports: ["farmingCape"] }, speed: 1, items: ["Farming Cape"] },
     ], requirements: { unlocks: ["farmingGuild85"] }, notes: "Req: 85 Farming." },
+  { id: "fruit_kastori", name: "Kastori", type: "fruitTree",
+    proximityGroup: "kastori_fruit", region: "Varlamore", routePriority: 32,
+    farmingItems: [{ name: "Sapling", slots: 1 }, { name: "Payment", slots: 1 }],
+    teleports: [
+      { method: "Quetzal Whistle → Kastori (landing site built)", requires: { teleports: ["quetzalWhistle"], unlocks: ["kastoriQuetzal"] }, speed: 1, items: ["Quetzal Whistle"] },
+      { method: "Quetzal Whistle → Hunter Guild, run SE", requires: { teleports: ["quetzalWhistle"] }, speed: 3, items: ["Quetzal Whistle"] },
+    ], requirements: { quests: ["childrenOfTheSun"], unlocks: ["varlamoreAccess"] },
+    notes: "Req: Children of the Sun." },
 
   // ═══ BUSH PATCHES ═══
   { id: "bush_champions", name: "Champions' Guild", type: "bush", proximityGroup: "champions", region: "Misthalin", routePriority: 10, farmingItems: [{ name: "Sapling", slots: 1 }, { name: "Payment", slots: 1 }], teleports: [{ method: "Combat Bracelet → Champions' Guild", requires: { teleports: ["combatBracelet"] }, speed: 1, items: ["Combat Bracelet"] }, { method: "Varrock Teleport, run SW", requires: { teleports: ["standardSpellbook"] }, speed: 3, items: ["Law rune", "Air rune", "Fire rune"] }], notes: null },
   { id: "bush_rimmington", name: "Rimmington", type: "bush", proximityGroup: "rimmington", region: "Asgarnia", routePriority: 15, farmingItems: [{ name: "Sapling", slots: 1 }, { name: "Payment", slots: 1 }], teleports: [{ method: "Skills Necklace → Crafting Guild, run S", requires: { teleports: ["skillsNecklace"] }, speed: 2, items: ["Skills Necklace"] }], notes: null },
   { id: "bush_ardougne", name: "South Ardougne", type: "bush", proximityGroup: "ardougne_south_bush", region: "Kandarin", routePriority: 20, farmingItems: [{ name: "Sapling", slots: 1 }, { name: "Payment", slots: 1 }], teleports: [{ method: "Ardougne Cloak 1+ → Monastery", requires: { teleports: ["ardougneCloak"] }, speed: 1, items: ["Ardougne Cloak 1+"] }, { method: "Fairy Ring DJP", requires: { teleports: ["fairyRing"] }, speed: 2, items: ["Dramen/Lunar staff"] }, { method: "Spirit Tree → Khazard Battlefield", requires: { teleports: ["spiritTree"] }, speed: 3, items: [] }], notes: null },
   { id: "bush_etceteria", name: "Etceteria", type: "bush", proximityGroup: "etceteria", region: "Fremennik", routePriority: 30, farmingItems: [{ name: "Sapling", slots: 1 }, { name: "Payment", slots: 1 }], teleports: [{ method: "Spirit Tree → Etceteria (planted)", requires: { teleports: ["spiritTreeEtceteria"] }, speed: 1, items: [] }, { method: "Ring of Wealth → Miscellania", requires: { teleports: ["ringOfWealth"] }, speed: 2, items: ["Ring of Wealth"] }, { method: "Fairy Ring CIP", requires: { teleports: ["fairyRing"] }, speed: 3, items: ["Dramen/Lunar staff"] }], requirements: { quests: ["royalTrouble"] }, notes: null },
-  { id: "bush_farmingGuild", name: "Farming Guild", type: "bush", proximityGroup: "farming_guild", region: "Kourend", routePriority: 5, farmingItems: [{ name: "Sapling", slots: 1 }, { name: "Payment", slots: 1 }], teleports: [{ method: "Skills Necklace → FG", requires: { teleports: ["skillsNecklace"] }, speed: 1, items: ["Skills Necklace"] }], requirements: { unlocks: ["farmingGuild85"] }, notes: null },
+  { id: "bush_farmingGuild", name: "Farming Guild", type: "bush", proximityGroup: "farming_guild", region: "Kourend", routePriority: 5, farmingItems: [{ name: "Sapling", slots: 1 }, { name: "Payment", slots: 1 }], teleports: [{ method: "Skills Necklace → FG", requires: { teleports: ["skillsNecklace"] }, speed: 1, items: ["Skills Necklace"] }], requirements: { unlocks: ["farmingGuild45"] }, notes: "Req: 45 Farming (east wing)." },
 
   // ═══ HOPS PATCHES ═══
   { id: "hops_lumbridge", name: "Lumbridge", type: "hops", proximityGroup: "lumbridge_hops", region: "Misthalin", routePriority: 10, farmingItems: [{ name: "Seeds ×4", slots: 1 }], teleports: [{ method: "Lumbridge Teleport, run N", requires: { teleports: ["standardSpellbook"] }, speed: 2, items: ["Law rune", "Air rune", "Earth rune"] }], notes: null },
@@ -376,7 +395,7 @@ const PATCHES = [
 
   // ═══ SPECIAL PATCHES ═══
   { id: "cactus_alkharid", name: "Al Kharid Cactus", type: "cactus", proximityGroup: "alkharid_cactus", region: "Desert", routePriority: 10, farmingItems: [{ name: "Cactus seed", slots: 1 }], teleports: [{ method: "Amulet of Glory → Al Kharid", requires: { teleports: ["amuletOfGlory"] }, speed: 2, items: ["Amulet of Glory"] }, { method: "Fairy Ring BIQ", requires: { teleports: ["fairyRing"] }, speed: 3, items: ["Dramen/Lunar staff"] }], notes: null },
-  { id: "cactus_farmingGuild", name: "Farming Guild Cactus", type: "cactus", proximityGroup: "farming_guild", region: "Kourend", routePriority: 5, farmingItems: [{ name: "Cactus seed", slots: 1 }], teleports: [{ method: "Skills Necklace → FG", requires: { teleports: ["skillsNecklace"] }, speed: 1, items: ["Skills Necklace"] }], requirements: { unlocks: ["farmingGuild85"] }, notes: "Req: 85 Farming." },
+  { id: "cactus_farmingGuild", name: "Farming Guild Cactus", type: "cactus", proximityGroup: "farming_guild", region: "Kourend", routePriority: 5, farmingItems: [{ name: "Cactus seed", slots: 1 }], teleports: [{ method: "Skills Necklace → FG", requires: { teleports: ["skillsNecklace"] }, speed: 1, items: ["Skills Necklace"] }], requirements: { unlocks: ["farmingGuild45"] }, notes: "Req: 45 Farming (east wing)." },
   { id: "calquat", name: "Calquat (Tai Bwo Wannai)", type: "calquat", proximityGroup: "calquat", region: "Karamja", routePriority: 10, farmingItems: [{ name: "Calquat sapling", slots: 1 }, { name: "Payment (8 poison ivy berries)", slots: 1 }], teleports: [{ method: "Fairy Ring CKR, run S", requires: { teleports: ["fairyRing"] }, speed: 2, items: ["Dramen/Lunar staff"] }, { method: "Glory → Karamja, run far S", requires: { teleports: ["amuletOfGlory"] }, speed: 4, items: ["Amulet of Glory"] }], notes: "Only calquat patch in-game." },
   { id: "seaweed", name: "Underwater Seaweed", type: "seaweed", proximityGroup: "seaweed", region: "Fossil Island", routePriority: 10, farmingItems: [{ name: "Seaweed spore ×2", slots: 1 }], teleports: [{ method: "Fairy Ring AKQ → dive spot", requires: { teleports: ["fairyRing"] }, speed: 2, items: ["Dramen/Lunar staff"] }], requirements: { quests: ["boneVoyage"], unlocks: ["fossilIsland"] }, notes: "Two patches. Req: Bone Voyage." },
   { id: "mushroom", name: "Canifis Mushroom", type: "mushroom", proximityGroup: "mushroom", region: "Morytania", routePriority: 10, farmingItems: [{ name: "Mushroom spore", slots: 1 }], teleports: [{ method: "Fairy Ring CKS, run N", requires: { teleports: ["fairyRing"] }, speed: 2, items: ["Dramen/Lunar staff"] }, { method: "Ectophial, run west", requires: { teleports: ["ectophial"] }, speed: 3, items: ["Ectophial"] }], notes: null },
@@ -458,6 +477,7 @@ const CROPS = {
     { id: "dragonfruit", name: "Dragonfruit", seed: "Dragonfruit sapling", payment: "Coconut ×15", lvl: 81 },
   ],
   bush: [
+    { id: "pick_only", name: "Pick only (no planting)", seed: null, payment: null, lvl: 1 },
     { id: "redberry", name: "Redberry", seed: "Redberry seed", payment: "Cabbages(10) ×4", lvl: 10 },
     { id: "cadavaberry", name: "Cadavaberry", seed: "Cadavaberry seed", payment: "Tomatoes(5) ×3", lvl: 22 },
     { id: "dwellberry", name: "Dwellberry", seed: "Dwellberry seed", payment: "Strawberries(5) ×3", lvl: 36 },
@@ -475,6 +495,7 @@ const CROPS = {
     { id: "wildblood", name: "Wildblood", seed: "Wildblood seed ×4", payment: "Nasturtium ×1", lvl: 28 },
   ],
   cactus: [
+    { id: "pick_only", name: "Pick only (no planting)", seed: null, payment: null, lvl: 1 },
     { id: "cactus", name: "Cactus", seed: "Cactus seed", payment: "Cadava berries ×6", lvl: 55 },
     { id: "potatoCactus", name: "Potato cactus", seed: "Potato cactus seed", payment: "Snape grass ×8", lvl: 64 },
   ],
@@ -561,6 +582,9 @@ function generateRoute(selectedTypes, prof, cropSelections) {
     return a.routePriority - b.routePriority;
   });
 
+  // Check if Catherby is in the route (for charter-from-Catherby logic)
+  const catherbyInRoute = stops.some(s => s.key === "catherby_area");
+
   // Build stops with inventory data using actual crop selections
   const rawSteps = stops.map((s, i) => {
     let bestUpgrade = null;
@@ -569,10 +593,28 @@ function generateRoute(selectedTypes, prof, cropSelections) {
       if (u && (!bestUpgrade || u.speed < bestUpgrade.speed)) bestUpgrade = u;
     }
 
-    // Compute actual farming items from crop selections
-    const seedItems = [];
-    const paymentItems = [];
+    // If Brimhaven and Catherby are both in route, prefer charter if it's faster than current best
+    let usedTp = s.bestTp;
+    let usedSpeed = s.bestSpeed;
+    if (s.key === "brimhaven" && catherbyInRoute) {
+      const charterTp = s.patches[0]?.teleports.find(t => t.charterFromCatherby);
+      if (charterTp && (!usedTp || charterTp.speed < usedSpeed || (usedTp && !usedTp.requires?.teleports?.length))) {
+        // Only override if charter is faster or equal to current non-planted option
+        const curNonPlanted = s.patches[0]?.teleports
+          .filter(t => tpMeetsReqs(t, prof) && !t.charterFromCatherby)
+          .sort((a,b) => a.speed - b.speed)[0];
+        if (!curNonPlanted || charterTp.speed <= curNonPlanted.speed) {
+          usedTp = charterTp;
+          usedSpeed = charterTp.speed;
+        }
+      }
+    }
+
+    // Compute actual farming items from crop selections — track quantities
+    const seedQty = {}; // { "Maple sapling": 3 }
+    const paymentQty = {}; // { "Oranges(5) ×1": 3 }
     let farmingSlots = 0;
+    let needsTreeRemovalCoins = false;
 
     for (const p of s.patches) {
       const cropList = CROPS[p.type];
@@ -580,37 +622,51 @@ function generateRoute(selectedTypes, prof, cropSelections) {
       if (cropList && selectedCrop) {
         const crop = cropList.find(c => c.id === selectedCrop);
         if (crop) {
-          // Count how many patches of this type at this stop
-          const patchCount = p.type === "allotment" ? 2 : 1; // allotments have 2 patches per location
-          const seedLabel = crop.seed + (patchCount > 1 ? ` (×${patchCount} patches)` : "");
-          if (!seedItems.includes(seedLabel)) {
-            seedItems.push(seedLabel);
-            farmingSlots += 1; // seeds stack
+          // Pick-only mode: no seeds or payments needed
+          if (crop.id === "pick_only") continue;
+
+          const patchCount = p.type === "allotment" ? 2 : 1;
+          if (crop.seed) {
+            seedQty[crop.seed] = (seedQty[crop.seed] || 0) + patchCount;
           }
           if (crop.payment) {
-            const payLabel = crop.payment + (patchCount > 1 ? ` (×${patchCount} patches)` : "");
-            if (!paymentItems.includes(payLabel)) {
-              paymentItems.push(payLabel);
-              farmingSlots += 1; // noted payments = 1 slot
-            }
+            paymentQty[crop.payment] = (paymentQty[crop.payment] || 0) + patchCount;
+          }
+
+          // Trees and fruit trees need coins for farmer to chop down old tree
+          if (p.type === "tree" || p.type === "fruitTree") {
+            needsTreeRemovalCoins = true;
           }
         }
       } else {
-        // Fallback for types without crop selection
         farmingSlots += 1;
-        seedItems.push(`${PATCH_TYPES.find(pt=>pt.id===p.type)?.label || p.type} seed/sapling`);
       }
     }
 
-    const teleportItems = [...new Set(s.bestTp.items || [])];
+    // Convert qty maps to labeled items with counts (for display at each stop)
+    const seedItems = Object.entries(seedQty).map(([name, qty]) => qty > 1 ? `${name} ×${qty}` : name);
+    const paymentItems = Object.entries(paymentQty).map(([name, qty]) => qty > 1 ? `${name} ×${qty} patches` : name);
+
+    // Seeds stack (1 slot), each unique payment type is 1 noted slot
+    farmingSlots += Object.keys(seedQty).length + Object.keys(paymentQty).length;
+
+    // Add coins for tree removal if needed
+    if (needsTreeRemovalCoins) {
+      seedItems.push("Coins (200gp for tree removal)");
+    }
+
+    const teleportItems = [...new Set(usedTp.items || [])];
     const allFarmingItems = [...seedItems, ...paymentItems];
 
     return {
       location: s.name, region: s.region, key: s.key,
       patchTypes: [...new Set(s.patches.map(p => p.type))],
-      teleport: s.bestTp.method, teleportSpeed: s.bestSpeed,
+      teleport: usedTp.method, teleportSpeed: usedSpeed,
       teleportItems, farmingItems: allFarmingItems,
       seedItems, paymentItems,
+      // Raw qty maps for bank aggregation
+      seedQty: { ...seedQty }, paymentQty: { ...paymentQty },
+      needsTreeRemovalCoins,
       farmingSlots,
       notes: [...new Set(s.notes)], upgrade: bestUpgrade,
     };
@@ -706,7 +762,8 @@ function categorizeItems(items) {
                lower.includes("spine") || lower.includes("leaf") || lower.includes("fibre") ||
                lower.includes("malt") || lower.includes("poison ivy") || lower.includes("mushroom") ||
                lower.includes("payment") || lower.includes("sweetcorn") || lower.includes("watermelon") ||
-               lower.includes("pineapple") || lower.includes("papaya") || lower.includes("snape grass")) {
+               lower.includes("pineapple") || lower.includes("papaya") || lower.includes("snape grass") ||
+               lower.includes("coins")) {
       categories.payments.items.push(item);
     } else {
       categories.teleport.items.push(item);
@@ -717,22 +774,41 @@ function categorizeItems(items) {
 }
 
 function computeBankWithdrawals(allSteps, fromIdx, alreadyHave) {
-  const items = new Set(["Spade", "Seed dibber", "Rake"]);
+  const tpItems = new Set();
+  const aggSeeds = {}; // seed name → total qty
+  const aggPayments = {}; // payment name → total qty
+  let needsCoins = false;
   let slots = ALWAYS_EQUIPPED;
 
   let stopsCount = 0;
   for (let i = fromIdx; i < allSteps.length; i++) {
     const s = allSteps[i];
-    const newTp = (s.teleportItems||[]).filter(it => !items.has(it));
+    const newTp = (s.teleportItems||[]).filter(it => !tpItems.has(it));
     const newSlots = newTp.length + s.farmingSlots;
     if (slots + newSlots > MAX_INVENTORY) break;
-    newTp.forEach(it => items.add(it));
-    s.farmingItems.forEach(it => items.add(it));
+    newTp.forEach(it => tpItems.add(it));
+    // Aggregate seed and payment quantities
+    if (s.seedQty) for (const [name, qty] of Object.entries(s.seedQty)) {
+      aggSeeds[name] = (aggSeeds[name] || 0) + qty;
+    }
+    if (s.paymentQty) for (const [name, qty] of Object.entries(s.paymentQty)) {
+      aggPayments[name] = (aggPayments[name] || 0) + qty;
+    }
+    if (s.needsTreeRemovalCoins) needsCoins = true;
     slots += newSlots;
     stopsCount++;
   }
 
-  const allItems = [...items].filter(it => !["Spade", "Seed dibber", "Rake"].includes(it));
+  // Format aggregated items with total quantities
+  const allItems = [...tpItems];
+  for (const [name, qty] of Object.entries(aggSeeds)) {
+    allItems.push(qty > 1 ? `${name} ×${qty}` : name);
+  }
+  if (needsCoins) allItems.push("Coins (200gp per tree removal)");
+  for (const [name, qty] of Object.entries(aggPayments)) {
+    allItems.push(qty > 1 ? `${name} ×${qty} patches` : name);
+  }
+
   const categories = categorizeItems(allItems);
 
   return {
@@ -768,8 +844,8 @@ function isProfileEmpty(p) {
     !Object.values(p.unlocks).some(Boolean) &&
     !Object.values(p.diaries).some(v => v && v !== "None");
 }
-function loadProfile() { try { const s = localStorage.getItem("osrs_fp_v4"); if (s) return JSON.parse(s); } catch(e){} return defaultProfile(); }
-function saveProfile(p) { localStorage.setItem("osrs_fp_v4", JSON.stringify(p)); }
+function loadProfile() { try { const s = localStorage.getItem("osrs_fp_v5"); if (s) return JSON.parse(s); } catch(e){} return defaultProfile(); }
+function saveProfile(p) { localStorage.setItem("osrs_fp_v5", JSON.stringify(p)); }
 
 // ═══════════════════════════════════════════════════════════════
 // COMPONENTS
@@ -990,7 +1066,7 @@ export default function App() {
   const [showRoute, setShowRoute] = useState(false);
   const [showCropSelect, setShowCropSelect] = useState(false);
   const [cropSelections, setCropSelections] = useState({});
-  const [first, setFirst] = useState(() => { try { return !localStorage.getItem("osrs_fp_v4"); } catch { return true; } });
+  const [first, setFirst] = useState(() => { try { return !localStorage.getItem("osrs_fp_v5"); } catch { return true; } });
 
   const handleSave = p => { setProf(p); setFirst(false); };
   const toggleType = id => setSelTypes(p => p.includes(id) ? p.filter(t => t !== id) : [...p, id]);
@@ -1160,20 +1236,29 @@ export default function App() {
                     >
                       {crops.map(c => (
                         <option key={c.id} value={c.id}>
-                          {c.name} (Lvl {c.lvl}) — {c.seed}{c.payment ? ` | Pay: ${c.payment}` : " | No protection"}
+                          {c.id === "pick_only" ? c.name : `${c.name} (Lvl ${c.lvl}) — ${c.seed}${c.payment ? ` | Pay: ${c.payment}` : " | No protection"}`}
                         </option>
                       ))}
                     </select>
-                    {selectedCrop && (
+                    {selectedCrop && selectedCrop.id !== "pick_only" && (
                       <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
-                        <span style={{ padding: "2px 8px", borderRadius: 4, fontSize: 10, background: "#1a2a1a", color: "#88cc88", border: "1px solid #2a442a" }}>
-                          Bring: {selectedCrop.seed} × {patchCount}
-                        </span>
+                        {selectedCrop.seed && (
+                          <span style={{ padding: "2px 8px", borderRadius: 4, fontSize: 10, background: "#1a2a1a", color: "#88cc88", border: "1px solid #2a442a" }}>
+                            Bring: {selectedCrop.seed} × {patchCount}
+                          </span>
+                        )}
                         {selectedCrop.payment && (
                           <span style={{ padding: "2px 8px", borderRadius: 4, fontSize: 10, background: "#2a2210", color: "#ddaa55", border: "1px solid #443820" }}>
                             Pay: {selectedCrop.payment} × {patchCount}
                           </span>
                         )}
+                      </div>
+                    )}
+                    {selectedCrop && selectedCrop.id === "pick_only" && (
+                      <div style={{ marginTop: 6 }}>
+                        <span style={{ padding: "2px 8px", borderRadius: 4, fontSize: 10, background: "#1a1a2a", color: "#9090cc", border: "1px solid #333366" }}>
+                          Just picking — no seeds needed
+                        </span>
                       </div>
                     )}
                   </div>
