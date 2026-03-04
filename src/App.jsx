@@ -96,6 +96,7 @@ const OTHER_UNLOCKS = [
   { id: "harmonyIsland", name: "Harmony Island Access" },
   { id: "varlamoreAccess", name: "Varlamore Access" },
   { id: "kastoriQuetzal", name: "Quetzal landing site at Kastori" },
+  { id: "fireOfEternalLight", name: "Fire of Eternal Light (Weiss)" },
 ];
 
 // ═══════════════════════════════════════════════════════════════
@@ -117,7 +118,7 @@ const PATCHES = [
       { method: "Ring of the Elements → Air Altar, run south", requires: { teleports: ["ringOfElements"] }, speed: 2, items: ["Ring of the Elements"] },
       { method: "Spirit Tree → Port Sarim, run north", requires: { teleports: ["spiritTreePortSarim"] }, speed: 3, items: [] },
       { method: "Ring of Wealth → Falador Park, run south", requires: { teleports: ["ringOfWealth"] }, speed: 4, items: ["Ring of Wealth"] },
-      { method: "Falador Teleport, run south", requires: { teleports: ["standardSpellbook"] }, speed: 5, items: ["Law rune", "Air runes", "Water rune"] },
+      { method: "Falador Teleport, run south", requires: { teleports: ["standardSpellbook"] }, speed: 5, items: ["Law rune", "Air rune", "Water rune"] },
     ], notes: "10% bonus XP w/ Medium Falador Diary." },
   { id: "herb_phasmatys", name: "Port Phasmatys", type: "herb",
     proximityGroup: "port_phasmatys", region: "Morytania", routePriority: 20,
@@ -131,7 +132,7 @@ const PATCHES = [
     farmingItems: [{ name: "Seed", slots: 1 }],
     teleports: [
       { method: "Catherby Teleport (Lunar)", requires: { teleports: ["lunarSpellbook"] }, speed: 1, items: ["Runes (Lunar)"] },
-      { method: "Camelot Teleport, run east", requires: { teleports: ["standardSpellbook"] }, speed: 3, items: ["Law rune", "Air runes"] },
+      { method: "Camelot Teleport, run east", requires: { teleports: ["standardSpellbook"] }, speed: 3, items: ["Law rune", "Air rune"] },
     ], notes: "5/10/15% extra herb yield w/ Med/Hard/Elite Kandarin Diary." },
   { id: "herb_ardougne", name: "Ardougne (North)", type: "herb",
     proximityGroup: "ardougne_north", region: "Kandarin", routePriority: 25,
@@ -141,7 +142,7 @@ const PATCHES = [
       { method: "Skills Necklace → Fishing Guild, run north", requires: { teleports: ["skillsNecklace"] }, speed: 2, items: ["Skills Necklace"] },
       { method: "Quest Point Cape teleport", requires: { teleports: ["questPointCape"] }, speed: 3, items: ["Quest Point Cape"] },
       { method: "Fairy Ring BLR", requires: { teleports: ["fairyRing"] }, speed: 4, items: ["Dramen/Lunar staff"] },
-      { method: "Ardougne Teleport, run north", requires: { teleports: ["standardSpellbook"] }, speed: 5, items: ["Law rune", "Water runes"] },
+      { method: "Ardougne Teleport, run north", requires: { teleports: ["standardSpellbook"] }, speed: 5, items: ["Law rune", "Water rune"] },
     ], notes: null },
   { id: "herb_hosidius", name: "Hosidius", type: "herb",
     proximityGroup: "hosidius", region: "Kourend", routePriority: 35,
@@ -157,7 +158,7 @@ const PATCHES = [
     farmingItems: [{ name: "Seed", slots: 1 }],
     teleports: [
       { method: "Stony Basalt teleport", requires: { teleports: ["stonyBasalt"], quests: ["makingFriends"] }, speed: 1, items: ["Stony Basalt"] },
-      { method: "Trollheim Teleport, run west", requires: { teleports: ["standardSpellbook"], quests: ["myArm"] }, speed: 3, items: ["Law rune", "Fire runes"] },
+      { method: "Trollheim Teleport, run west", requires: { teleports: ["standardSpellbook"], quests: ["myArm"] }, speed: 3, items: ["Law rune", "Fire rune"] },
     ], requirements: { quests: ["myArm"] },
     notes: "Disease-free. Req: My Arm's Big Adventure." },
   { id: "herb_weiss", name: "Weiss", type: "herb",
@@ -166,8 +167,8 @@ const PATCHES = [
     teleports: [
       { method: "Icy Basalt teleport", requires: { teleports: ["icyBasalt"] }, speed: 1, items: ["Icy Basalt"] },
       { method: "Fairy Ring DKS → Larry's boat, long run", requires: { teleports: ["fairyRing"] }, speed: 4, items: ["Dramen/Lunar staff"] },
-    ], requirements: { quests: ["makingFriends"] },
-    notes: "Disease-free. Req: Making Friends with My Arm." },
+    ], requirements: { quests: ["makingFriends"], unlocks: ["fireOfEternalLight"] },
+    notes: "Disease-free. Req: Making Friends with My Arm + Fire of Eternal Light." },
   { id: "herb_harmony", name: "Harmony Island", type: "herb",
     proximityGroup: "harmony_herb", region: "Morytania", routePriority: 50,
     farmingItems: [{ name: "Seed", slots: 1 }],
@@ -201,7 +202,7 @@ const PATCHES = [
     farmingItems: [{ name: "Seeds ×3", slots: 1 }, { name: "Compost", slots: 1 }],
     teleports: [
       { method: "Explorer's Ring → Cabbage Patch", requires: { teleports: ["explorerRing"] }, speed: 1, items: ["Explorer's Ring 2+"] },
-      { method: "Falador Teleport, run south", requires: { teleports: ["standardSpellbook"] }, speed: 5, items: ["Law rune", "Air runes", "Water rune"] },
+      { method: "Falador Teleport, run south", requires: { teleports: ["standardSpellbook"] }, speed: 5, items: ["Law rune", "Air rune", "Water rune"] },
     ], notes: null },
   { id: "allot_phasmatys", name: "Port Phasmatys", type: "allotment",
     proximityGroup: "port_phasmatys", region: "Morytania", routePriority: 20,
@@ -215,7 +216,7 @@ const PATCHES = [
     farmingItems: [{ name: "Seeds ×3", slots: 1 }, { name: "Compost", slots: 1 }],
     teleports: [
       { method: "Catherby Teleport (Lunar)", requires: { teleports: ["lunarSpellbook"] }, speed: 1, items: ["Runes (Lunar)"] },
-      { method: "Camelot Teleport, run east", requires: { teleports: ["standardSpellbook"] }, speed: 3, items: ["Law rune", "Air runes"] },
+      { method: "Camelot Teleport, run east", requires: { teleports: ["standardSpellbook"] }, speed: 3, items: ["Law rune", "Air rune"] },
     ], notes: null },
   { id: "allot_ardougne", name: "Ardougne (North)", type: "allotment",
     proximityGroup: "ardougne_north", region: "Kandarin", routePriority: 25,
@@ -291,13 +292,13 @@ const PATCHES = [
     farmingItems: [{ name: "Sapling", slots: 1 }, { name: "Payment", slots: 1 }],
     teleports: [
       { method: "Ring of Wealth → Falador Park", requires: { teleports: ["ringOfWealth"] }, speed: 1, items: ["Ring of Wealth"] },
-      { method: "Falador Teleport, run east", requires: { teleports: ["standardSpellbook"] }, speed: 2, items: ["Law rune", "Air runes", "Water rune"] },
+      { method: "Falador Teleport, run east", requires: { teleports: ["standardSpellbook"] }, speed: 2, items: ["Law rune", "Air rune", "Water rune"] },
     ], notes: "Disease-free w/ Elite Falador Diary." },
   { id: "tree_taverley", name: "Taverley", type: "tree",
     proximityGroup: "taverley_tree", region: "Asgarnia", routePriority: 25,
     farmingItems: [{ name: "Sapling", slots: 1 }, { name: "Payment", slots: 1 }],
     teleports: [
-      { method: "Falador Teleport, run NW through gate", requires: { teleports: ["standardSpellbook"] }, speed: 2, items: ["Law rune", "Air runes", "Water rune"] },
+      { method: "Falador Teleport, run NW through gate", requires: { teleports: ["standardSpellbook"] }, speed: 2, items: ["Law rune", "Air rune", "Water rune"] },
       { method: "Games Necklace → Burthorpe, run south", requires: { teleports: ["gamesNecklace"] }, speed: 3, items: ["Games Necklace"] },
     ], notes: null },
   { id: "tree_gnomeStronghold", name: "Gnome Stronghold", type: "tree",
@@ -340,7 +341,7 @@ const PATCHES = [
     farmingItems: [{ name: "Sapling", slots: 1 }, { name: "Payment", slots: 1 }],
     teleports: [
       { method: "Catherby Teleport (Lunar)", requires: { teleports: ["lunarSpellbook"] }, speed: 1, items: ["Runes (Lunar)"] },
-      { method: "Camelot Teleport, run east", requires: { teleports: ["standardSpellbook"] }, speed: 3, items: ["Law rune", "Air runes"] },
+      { method: "Camelot Teleport, run east", requires: { teleports: ["standardSpellbook"] }, speed: 3, items: ["Law rune", "Air rune"] },
     ], notes: null },
   { id: "fruit_treeGnomeVillage", name: "Tree Gnome Village", type: "fruitTree",
     proximityGroup: "gnome_village", region: "Kandarin", routePriority: 25,
@@ -382,7 +383,7 @@ const PATCHES = [
 
   // ═══ BUSH PATCHES ═══
   { id: "bush_champions", name: "Champions' Guild", type: "bush", proximityGroup: "champions", region: "Misthalin", routePriority: 10, farmingItems: [{ name: "Sapling", slots: 1 }, { name: "Payment", slots: 1 }], teleports: [{ method: "Combat Bracelet → Champions' Guild", requires: { teleports: ["combatBracelet"] }, speed: 1, items: ["Combat Bracelet"] }, { method: "Varrock Teleport, run SW", requires: { teleports: ["standardSpellbook"] }, speed: 3, items: ["Law rune", "Air rune", "Fire rune"] }], notes: null },
-  { id: "bush_rimmington", name: "Rimmington", type: "bush", proximityGroup: "rimmington", region: "Asgarnia", routePriority: 15, farmingItems: [{ name: "Sapling", slots: 1 }, { name: "Payment", slots: 1 }], teleports: [{ method: "Skills Necklace → Crafting Guild, run S", requires: { teleports: ["skillsNecklace"] }, speed: 2, items: ["Skills Necklace"] }], notes: null },
+  { id: "bush_rimmington", name: "Rimmington", type: "bush", proximityGroup: "rimmington", region: "Asgarnia", routePriority: 15, farmingItems: [{ name: "Sapling", slots: 1 }, { name: "Payment", slots: 1 }], teleports: [{ method: "Skills Necklace → Crafting Guild, run S", requires: { teleports: ["skillsNecklace"] }, speed: 2, items: ["Skills Necklace"] }, { method: "Falador Teleport, run SW", requires: {}, speed: 4, items: ["Law rune", "Air rune", "Water rune"] }], notes: null },
   { id: "bush_ardougne", name: "South Ardougne", type: "bush", proximityGroup: "ardougne_south_bush", region: "Kandarin", routePriority: 20, farmingItems: [{ name: "Sapling", slots: 1 }, { name: "Payment", slots: 1 }], teleports: [{ method: "Ardougne Cloak 1+ → Monastery", requires: { teleports: ["ardougneCloak"] }, speed: 1, items: ["Ardougne Cloak 1+"] }, { method: "Fairy Ring DJP", requires: { teleports: ["fairyRing"] }, speed: 2, items: ["Dramen/Lunar staff"] }, { method: "Spirit Tree → Khazard Battlefield", requires: { teleports: ["spiritTree"] }, speed: 3, items: [] }], notes: null },
   { id: "bush_etceteria", name: "Etceteria", type: "bush", proximityGroup: "etceteria", region: "Fremennik", routePriority: 30, farmingItems: [{ name: "Sapling", slots: 1 }, { name: "Payment", slots: 1 }], teleports: [{ method: "Spirit Tree → Etceteria (planted)", requires: { teleports: ["spiritTreeEtceteria"] }, speed: 1, items: [] }, { method: "Ring of Wealth → Miscellania", requires: { teleports: ["ringOfWealth"] }, speed: 2, items: ["Ring of Wealth"] }, { method: "Fairy Ring CIP", requires: { teleports: ["fairyRing"] }, speed: 3, items: ["Dramen/Lunar staff"] }], requirements: { quests: ["royalTrouble"] }, notes: null },
   { id: "bush_farmingGuild", name: "Farming Guild", type: "bush", proximityGroup: "farming_guild", region: "Kourend", routePriority: 5, farmingItems: [{ name: "Sapling", slots: 1 }, { name: "Payment", slots: 1 }], teleports: [{ method: "Skills Necklace → FG", requires: { teleports: ["skillsNecklace"] }, speed: 1, items: ["Skills Necklace"] }], requirements: { unlocks: ["farmingGuild45"] }, notes: "Req: 45 Farming (east wing)." },
@@ -390,7 +391,7 @@ const PATCHES = [
   // ═══ HOPS PATCHES ═══
   { id: "hops_lumbridge", name: "Lumbridge", type: "hops", proximityGroup: "lumbridge_hops", region: "Misthalin", routePriority: 10, farmingItems: [{ name: "Seeds ×4", slots: 1 }], teleports: [{ method: "Lumbridge Teleport, run N", requires: { teleports: ["standardSpellbook"] }, speed: 2, items: ["Law rune", "Air rune", "Earth rune"] }], notes: null },
   { id: "hops_seers", name: "McGrubor's Wood", type: "hops", proximityGroup: "seers_hops", region: "Kandarin", routePriority: 20, farmingItems: [{ name: "Seeds ×4", slots: 1 }], teleports: [{ method: "Combat Bracelet → Ranging Guild", requires: { teleports: ["combatBracelet"] }, speed: 2, items: ["Combat Bracelet"] }, { method: "Fairy Ring ALS", requires: { teleports: ["fairyRing"] }, speed: 2, items: ["Dramen/Lunar staff"] }], notes: null },
-  { id: "hops_yanille", name: "Yanille", type: "hops", proximityGroup: "yanille_hops", region: "Kandarin", routePriority: 25, farmingItems: [{ name: "Seeds ×4", slots: 1 }], teleports: [{ method: "Watchtower TP → Yanille (Hard Ardy)", requires: { teleports: ["standardSpellbook"] }, speed: 2, items: ["Law rune", "Earth runes"] }, { method: "Fairy Ring CIQ", requires: { teleports: ["fairyRing"] }, speed: 3, items: ["Dramen/Lunar staff"] }], notes: null },
+  { id: "hops_yanille", name: "Yanille", type: "hops", proximityGroup: "yanille_hops", region: "Kandarin", routePriority: 25, farmingItems: [{ name: "Seeds ×4", slots: 1 }], teleports: [{ method: "Watchtower TP → Yanille (Hard Ardy)", requires: { teleports: ["standardSpellbook"] }, speed: 2, items: ["Law rune", "Earth rune"] }, { method: "Fairy Ring CIQ", requires: { teleports: ["fairyRing"] }, speed: 3, items: ["Dramen/Lunar staff"] }], notes: null },
   { id: "hops_entrana", name: "Entrana", type: "hops", proximityGroup: "entrana_hops", region: "Asgarnia", routePriority: 40, farmingItems: [{ name: "Seeds ×4", slots: 1 }], teleports: [{ method: "Explorer's Ring → Port Sarim + boat", requires: { teleports: ["explorerRing"] }, speed: 3, items: ["Explorer's Ring 2+"] }], notes: "No weapons/armour on Entrana!" },
 
   // ═══ SPECIAL PATCHES ═══
@@ -655,13 +656,29 @@ function generateRoute(selectedTypes, prof, cropSelections) {
       seedItems.push("Coins (200gp for tree removal)");
     }
 
-    const teleportItems = [...new Set(usedTp.items || [])];
+    // Determine fairy ring access method prefix
+    let teleportMethod = usedTp.method;
+    const tpItemsRaw = [...(usedTp.items || [])];
+    if (teleportMethod.startsWith("Fairy Ring") || teleportMethod.startsWith("Fairy ring")) {
+      if (prof.teleports["questPointCape"]) {
+        teleportMethod = `Quest Cape → ${teleportMethod}`;
+        // Replace Dramen/Lunar staff with Quest Point Cape in items
+        const idx = tpItemsRaw.indexOf("Dramen/Lunar staff");
+        if (idx !== -1) tpItemsRaw[idx] = "Quest Point Cape";
+      } else if (prof.teleports["ardougneCloak"]) {
+        teleportMethod = `Ardougne Cloak → ${teleportMethod}`;
+        const idx = tpItemsRaw.indexOf("Dramen/Lunar staff");
+        if (idx !== -1) tpItemsRaw[idx] = "Ardougne Cloak 1+";
+      }
+    }
+
+    const teleportItems = [...new Set(tpItemsRaw)];
     const allFarmingItems = [...seedItems, ...paymentItems];
 
     return {
       location: s.name, region: s.region, key: s.key,
       patchTypes: [...new Set(s.patches.map(p => p.type))],
-      teleport: usedTp.method, teleportSpeed: usedSpeed,
+      teleport: teleportMethod, teleportSpeed: usedSpeed,
       teleportItems, farmingItems: allFarmingItems,
       seedItems, paymentItems,
       // Raw qty maps for bank aggregation
@@ -1074,7 +1091,12 @@ export default function App() {
     const defaults = {};
     for (const t of selTypes) {
       if (!cropSelections[t] && CROPS[t] && CROPS[t].length > 0) {
-        defaults[t] = CROPS[t][CROPS[t].length - 1].id;
+        // Bush and cactus default to "pick only" since they usually don't need replanting
+        if (t === "bush" || t === "cactus") {
+          defaults[t] = "pick_only";
+        } else {
+          defaults[t] = CROPS[t][CROPS[t].length - 1].id;
+        }
       }
     }
     setCropSelections(prev => ({ ...prev, ...defaults }));
