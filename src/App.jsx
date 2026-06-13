@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback, memo } from "react";
 
 // ═══════════════════════════════════════════════════════════════
 // OSRS FARMING ROUTE OPTIMIZER v3
@@ -755,6 +755,10 @@ function generateRoute(selectedTypes, prof, cropSelections) {
     stopsOnly.push({ ...step, isBank: false, overflow });
   }
 
+  // If nothing is actually reachable, return an empty route so the UI can show
+  // its "no patches available" state instead of a lone, contradictory bank stop.
+  if (stopsOnly.every(s => s.isBank)) return [];
+
   // Combine: initial bank + all stops with mid-route banks
   const finalRoute = [withBanks[0], ...stopsOnly];
 
@@ -900,6 +904,17 @@ function saveProfile(p) {
   try { localStorage.setItem(PROFILE_KEY, JSON.stringify(p)); return true; } catch (e) { return false; }
 }
 
+// Session state (selected types, crops, generated route, check-off progress) is
+// persisted so an accidental refresh mid-run doesn't wipe everything.
+const SESSION_KEY = "osrs_session_v1";
+function loadSession() {
+  try { const s = localStorage.getItem(SESSION_KEY); if (s) return JSON.parse(s); } catch (e) { /* ignore */ }
+  return {};
+}
+function saveSession(s) {
+  try { localStorage.setItem(SESSION_KEY, JSON.stringify(s)); } catch (e) { /* ignore */ }
+}
+
 // ═══════════════════════════════════════════════════════════════
 // COMPONENTS
 // ═══════════════════════════════════════════════════════════════
@@ -910,7 +925,7 @@ function SpeedBadge({ speed }) {
   return <span style={{ display: "inline-block", padding: "2px 7px", borderRadius: 4, fontSize: 10, fontWeight: 700, letterSpacing: "0.5px", textTransform: "uppercase", backgroundColor: s.c + "22", color: s.c, border: `1px solid ${s.c}44` }}>{s.l}</span>;
 }
 
-function BankStop({ step }) {
+const BankStop = memo(function BankStop({ step }) {
   const isInitial = step.isInitial;
   return (
     <div style={{
@@ -933,13 +948,13 @@ function BankStop({ step }) {
         }}>
           {isInitial ? "Starting Bank" : "Bank Stop"}
         </div>
-        <div style={{ fontSize: 12, color: isInitial ? "#668866" : "#7777aa", marginBottom: 10 }}>
+        <div style={{ fontSize: 12, color: isInitial ? "#80a880" : "#9090c8", marginBottom: 10 }}>
           {isInitial ? "Gear up before starting your run" : step.bankNote}
         </div>
 
         {/* Always-equipped tools */}
         <div style={{ marginBottom: 8 }}>
-          <div style={{ fontSize: 10, color: "#666", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>
+          <div style={{ fontSize: 10, color: "#8a8a8a", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>
             🔧 Always Equipped
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
@@ -952,7 +967,7 @@ function BankStop({ step }) {
         {/* Categorized items */}
         {(step.bankCategories || []).map((cat, ci) => (
           <div key={ci} style={{ marginBottom: ci < (step.bankCategories||[]).length - 1 ? 8 : 0 }}>
-            <div style={{ fontSize: 10, color: "#666", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>
+            <div style={{ fontSize: 10, color: "#8a8a8a", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>
               {cat.label}
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
@@ -969,19 +984,20 @@ function BankStop({ step }) {
       </div>
     </div>
   );
-}
+});
 
 function UpgradeHint({ upgrade }) {
   const [open, setOpen] = useState(false);
+  const toggle = e => { e.stopPropagation(); setOpen(o => !o); };
   return (
-    <div onClick={e => { e.stopPropagation(); setOpen(!open); }} style={{ marginTop: 8, padding: "8px 10px", borderRadius: 6, background: "#1a1a2a", border: "1px solid #2a2a44", cursor: "pointer" }}>
+    <div role="button" tabIndex={0} aria-expanded={open} aria-label="Faster teleport option available — show what to unlock" onClick={toggle} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(e); } }} style={{ marginTop: 8, padding: "8px 10px", borderRadius: 6, background: "#1a1a2a", border: "1px solid #2a2a44", cursor: "pointer" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ fontSize: 12 }}>⚡</span>
-          <span style={{ fontSize: 11, color: "#7a7aee", fontWeight: 600 }}>Faster option available</span>
+          <span style={{ fontSize: 11, color: "#9a9aee", fontWeight: 600 }}>Faster option available</span>
           <SpeedBadge speed={upgrade.speed} />
         </div>
-        <span style={{ color: "#555", fontSize: 12, transition: "transform 0.2s", transform: open ? "rotate(180deg)" : "rotate(0)" }}>▼</span>
+        <span style={{ color: "#8a8a8a", fontSize: 12, transition: "transform 0.2s", transform: open ? "rotate(180deg)" : "rotate(0)" }}>▼</span>
       </div>
       {open && (
         <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid #2a2a44" }}>
@@ -998,14 +1014,15 @@ function UpgradeHint({ upgrade }) {
   );
 }
 
-function RouteStep({ step, checked, onToggle }) {
+const RouteStep = memo(function RouteStep({ step, checked, onToggle }) {
+  const toggle = () => onToggle(step.step);
   return (
-    <div onClick={onToggle} style={{ display: "flex", gap: 16, padding: 16, borderRadius: 10, cursor: "pointer", background: checked ? "#1a2a1a" : "#1e1e1e", border: `1px solid ${checked ? "#2e5a2e" : "#2a2a2a"}`, opacity: checked ? 0.5 : 1, transition: "all 0.2s" }}>
+    <div role="button" tabIndex={0} aria-pressed={checked} aria-label={`${step.location} — ${step.teleport}. ${checked ? "Done" : "Not done"}.`} onClick={toggle} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } }} style={{ display: "flex", gap: 16, padding: 16, borderRadius: 10, cursor: "pointer", background: checked ? "#1a2a1a" : "#1e1e1e", border: `1px solid ${checked ? "#2e5a2e" : "#2a2a2a"}`, opacity: checked ? 0.5 : 1, transition: "all 0.2s" }}>
       <div style={{ width: 36, height: 36, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: checked ? "#2e5a2e" : "linear-gradient(135deg, #c9a84c, #8b7028)", color: checked ? "#4CAF50" : "#1a1a1a", fontWeight: 800, fontSize: 14, flexShrink: 0, fontFamily: "'Cinzel', serif" }}>{checked ? "✓" : step.step}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
           <span style={{ fontWeight: 700, fontSize: 15, color: checked ? "#4a8a4a" : "#e8dcc0", textDecoration: checked ? "line-through" : "none", fontFamily: "'Cinzel', serif" }}>{step.location}</span>
-          <span style={{ fontSize: 11, color: "#666", padding: "1px 6px", borderRadius: 3, border: "1px solid #333", background: "#111" }}>{step.region}</span>
+          <span style={{ fontSize: 11, color: "#9a9a9a", padding: "1px 6px", borderRadius: 3, border: "1px solid #333", background: "#111" }}>{step.region}</span>
           {step.patchTypes.map(t => { const pt = PATCH_TYPES.find(p => p.id === t); return pt ? <span key={t} style={{ fontSize: 11, padding: "1px 6px", borderRadius: 3, background: pt.color + "22", color: pt.color, border: `1px solid ${pt.color}44` }}>{pt.icon} {pt.label}</span> : null; })}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1013,27 +1030,38 @@ function RouteStep({ step, checked, onToggle }) {
           <span style={{ color: checked ? "#5a8a5a" : "#bbb", fontSize: 13, textDecoration: checked ? "line-through" : "none" }}>{step.teleport}</span>
           <SpeedBadge speed={step.teleportSpeed} />
         </div>
-        {step.notes.length > 0 && <div style={{ marginTop: 4 }}>{step.notes.map((n,i) => <div key={i} style={{ fontSize: 11, color: "#8a7a50", fontStyle: "italic" }}>💡 {n}</div>)}</div>}
+        {step.overflow && <div style={{ marginTop: 6, fontSize: 11, color: "#e0a050", background: "#2a2110", border: "1px solid #4a3a18", borderRadius: 6, padding: "4px 8px" }}>⚠ This stop needs more than one inventory of items — split it into two trips.</div>}
+        {step.notes.length > 0 && <div style={{ marginTop: 4 }}>{step.notes.map((n,i) => <div key={i} style={{ fontSize: 11, color: "#a8975a", fontStyle: "italic" }}>💡 {n}</div>)}</div>}
         {!checked && step.upgrade && <UpgradeHint upgrade={step.upgrade} />}
       </div>
     </div>
   );
-}
+});
 
 function ProfileEditor({ profile, setProfile, onClose }) {
-  const [l, setL] = useState(JSON.parse(JSON.stringify(profile)));
+  const [l, setL] = useState(() => normalizeProfile(JSON.parse(JSON.stringify(profile))));
+  const cardRef = useRef(null);
   const tQ = id => setL(p => ({ ...p, quests: { ...p.quests, [id]: !p.quests[id] } }));
   const sD = (id, t) => setL(p => ({ ...p, diaries: { ...p.diaries, [id]: t } }));
   const tT = id => setL(p => ({ ...p, teleports: { ...p.teleports, [id]: !p.teleports[id] } }));
   const tU = id => setL(p => ({ ...p, unlocks: { ...p.unlocks, [id]: !p.unlocks[id] } }));
-  const save = () => { setProfile(l); saveProfile(l); onClose(); };
+  const sLvl = v => setL(p => ({ ...p, farmingLevel: Math.min(99, Math.max(1, Math.round(Number(v) || 1))) }));
+  const save = () => { const ok = saveProfile(l); setProfile(l); if (!ok) alert("Couldn't save to browser storage (private mode or full). Your changes apply for this session only."); onClose(); };
+
+  // Close on Escape; move focus into the dialog on open.
+  useEffect(() => {
+    const onKey = e => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    cardRef.current?.focus();
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
   const allQ = () => { const on = QUESTS.every(q => l.quests[q.id]); const u = {}; QUESTS.forEach(q => u[q.id] = !on); setL(p => ({ ...p, quests: { ...p.quests, ...u } })); };
   const allT = () => { const on = TELEPORTS.every(t => l.teleports[t.id]); const u = {}; TELEPORTS.forEach(t => u[t.id] = !on); setL(p => ({ ...p, teleports: { ...p.teleports, ...u } })); };
 
   // Group teleports
   const tpGroups = [
     { label: "Transport Networks", ids: TELEPORTS.filter(t => t.cat === "transport").map(t => t.id) },
-    { label: "Planted Spirit Trees", desc: "Only enable trees you've actually planted (req 83 Farming)", ids: TELEPORTS.filter(t => t.cat === "planted").map(t => t.id) },
+    { label: "Planted Spirit Trees", desc: "Only enable trees you've actually planted (requires 83 Farming)", ids: TELEPORTS.filter(t => t.cat === "planted").map(t => t.id) },
     { label: "Teleport Items", ids: TELEPORTS.filter(t => t.cat === "item").map(t => t.id) },
     { label: "Jewellery", ids: TELEPORTS.filter(t => t.cat === "jewellery").map(t => t.id) },
     { label: "Spellbooks", ids: TELEPORTS.filter(t => t.cat === "spellbook").map(t => t.id) },
@@ -1042,13 +1070,22 @@ function ProfileEditor({ profile, setProfile, onClose }) {
   ];
 
   return (
-    <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.7)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)" }}>
-      <div style={{ background: "#1a1a1a", border: "1px solid #333", borderRadius: 12, width: "min(95vw, 740px)", maxHeight: "90vh", overflow: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.8)" }}>
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.7)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)" }}>
+      <div ref={cardRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="profile-dialog-title" onClick={e => e.stopPropagation()} style={{ background: "#1a1a1a", border: "1px solid #333", borderRadius: 12, width: "min(95vw, 740px)", maxHeight: "90vh", overflow: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.8)", outline: "none" }}>
         <div style={{ position: "sticky", top: 0, zIndex: 2, background: "linear-gradient(to bottom, #1a1a1a 80%, transparent)", padding: "20px 24px 28px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div><h2 style={{ margin: 0, color: "#e0c97f", fontFamily: "'Cinzel', serif", fontSize: 20 }}>Account Profile</h2><p style={{ margin: "4px 0 0", color: "#888", fontSize: 12 }}>Configure your unlocks. Saved to browser storage.</p></div>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "#666", fontSize: 24, cursor: "pointer" }}>✕</button>
+          <div><h2 id="profile-dialog-title" style={{ margin: 0, color: "#e0c97f", fontFamily: "'Cinzel', serif", fontSize: 20 }}>Account Profile</h2><p style={{ margin: "4px 0 0", color: "#999", fontSize: 12 }}>Configure your unlocks. Saved to browser storage. Press Esc to close.</p></div>
+          <button onClick={onClose} aria-label="Close profile editor" style={{ background: "none", border: "none", color: "#999", fontSize: 24, cursor: "pointer" }}>✕</button>
         </div>
         <div style={{ padding: "0 24px 24px" }}>
+          {/* Farming level */}
+          <div style={{ marginBottom: 24 }}>
+            <h3 style={{ margin: "0 0 10px", color: "#c9a84c", fontSize: 14, textTransform: "uppercase", letterSpacing: 1 }}>Farming Level</h3>
+            <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "10px 14px", borderRadius: 8, background: "#222", border: "1px solid #333" }}>
+              <input type="range" min={1} max={99} value={l.farmingLevel} onChange={e => sLvl(e.target.value)} aria-label="Farming level" style={{ flex: 1, accentColor: "#c9a84c" }} />
+              <input type="number" min={1} max={99} value={l.farmingLevel} onChange={e => sLvl(e.target.value)} aria-label="Farming level" style={{ width: 60, background: "#1a1a1a", color: "#e0c97f", border: "1px solid #444", borderRadius: 4, padding: "6px 8px", fontSize: 14, textAlign: "center" }} />
+            </div>
+            <div style={{ fontSize: 11, color: "#8a8a8a", marginTop: 6, fontStyle: "italic" }}>Used to default crops you can actually plant and to gate Farming Guild tiers (45 / 65 / 85).</div>
+          </div>
           {/* Quests */}
           <div style={{ marginBottom: 24 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
@@ -1062,7 +1099,7 @@ function ProfileEditor({ profile, setProfile, onClose }) {
           {/* Diaries */}
           <div style={{ marginBottom: 24 }}>
             <h3 style={{ margin: "0 0 10px", color: "#c9a84c", fontSize: 14, textTransform: "uppercase", letterSpacing: 1 }}>Achievement Diaries</h3>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 8 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 8 }}>
               {DIARIES.map(d => <div key={d.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderRadius: 6, background: "#222", border: "1px solid #333" }}><span style={{ color: "#ccc", fontSize: 13 }}>{d.name}</span><select value={l.diaries[d.id]||"None"} onChange={e => sD(d.id, e.target.value)} style={{ background: "#1a1a1a", color: "#e0c97f", border: "1px solid #444", borderRadius: 4, padding: "3px 6px", fontSize: 12 }}>{DIARY_TIERS.map(t => <option key={t} value={t}>{t}</option>)}</select></div>)}
             </div>
           </div>
@@ -1075,14 +1112,14 @@ function ProfileEditor({ profile, setProfile, onClose }) {
             {tpGroups.filter(g => g.ids.length > 0).map(grp => (
               <div key={grp.label} style={{ marginBottom: 12 }}>
                 <div style={{ fontSize: 11, color: "#777", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.5px" }}>{grp.label}</div>
-                {grp.desc && <div style={{ fontSize: 10, color: "#555", marginBottom: 6, fontStyle: "italic" }}>{grp.desc}</div>}
+                {grp.desc && <div style={{ fontSize: 10, color: "#8a8a8a", marginBottom: 6, fontStyle: "italic" }}>{grp.desc}</div>}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 5 }}>
                   {grp.ids.map(id => { const t = TELEPORTS.find(tp => tp.id === id); return t ? (
                     <label key={id} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "5px 10px", borderRadius: 6, cursor: "pointer", background: l.teleports[id] ? "#1a2a1a" : "#222", border: `1px solid ${l.teleports[id] ? "#205a20" : "#333"}` }}>
                       <input type="checkbox" checked={!!l.teleports[id]} onChange={() => tT(id)} style={{ accentColor: "#4CAF50", marginTop: 2 }} />
                       <div>
                         <div style={{ color: l.teleports[id] ? "#a5d6a7" : "#888", fontSize: 13 }}>{t.name}</div>
-                        {t.desc && <div style={{ color: "#555", fontSize: 10, marginTop: 1 }}>{t.desc}</div>}
+                        {t.desc && <div style={{ color: "#8a8a8a", fontSize: 10, marginTop: 1 }}>{t.desc}</div>}
                       </div>
                     </label>
                   ) : null; })}
@@ -1111,27 +1148,42 @@ function ProfileEditor({ profile, setProfile, onClose }) {
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════
 export default function App() {
-  const [prof, setProf] = useState(() => loadProfile());
-  const [showProf, setShowProf] = useState(false);
-  const [selTypes, setSelTypes] = useState(["herb"]);
-  const [route, setRoute] = useState(null);
-  const [checked, setChecked] = useState({});
-  const [showRoute, setShowRoute] = useState(false);
-  const [showCropSelect, setShowCropSelect] = useState(false);
-  const [cropSelections, setCropSelections] = useState({});
-  const [first, setFirst] = useState(() => { try { return !localStorage.getItem("osrs_fp_v5"); } catch { return true; } });
+  // Read any persisted session once.
+  const restoredRef = useRef(null);
+  if (restoredRef.current === null) restoredRef.current = loadSession();
+  const restored = restoredRef.current;
 
-  const handleSave = p => { setProf(p); setFirst(false); };
+  const [prof, setProf] = useState(loadProfile);
+  const [showProf, setShowProf] = useState(false);
+  const [selTypes, setSelTypes] = useState(() => restored.selTypes || ["herb"]);
+  const [route, setRoute] = useState(() => restored.route || null);
+  const [checked, setChecked] = useState(() => restored.checked || {});
+  const [showRoute, setShowRoute] = useState(() => !!restored.showRoute);
+  const [showCropSelect, setShowCropSelect] = useState(() => !!restored.showCropSelect);
+  const [cropSelections, setCropSelections] = useState(() => restored.cropSelections || {});
+
+  // Persist the working session whenever it changes.
+  useEffect(() => {
+    saveSession({ selTypes, cropSelections, route, checked, showRoute, showCropSelect });
+  }, [selTypes, cropSelections, route, checked, showRoute, showCropSelect]);
+
+  const handleSave = p => setProf(p);
   const toggleType = id => setSelTypes(p => p.includes(id) ? p.filter(t => t !== id) : [...p, id]);
+  // How many patches are actually reachable for the current profile + selection.
+  const reachableCount = selTypes.reduce((n, t) => n + PATCHES.filter(p => p.type === t && meetsReqs(p, prof)).length, 0);
   const go = () => {
+    if (reachableCount === 0) return; // nothing to plan
     const defaults = {};
+    const lvl = prof.farmingLevel || 1;
     for (const t of selTypes) {
       if (!cropSelections[t] && CROPS[t] && CROPS[t].length > 0) {
         // Bush and cactus default to "pick only" since they usually don't need replanting
         if (t === "bush" || t === "cactus") {
           defaults[t] = "pick_only";
         } else {
-          defaults[t] = CROPS[t][CROPS[t].length - 1].id;
+          // Default to the highest-level crop the player can actually plant.
+          const plantable = CROPS[t].filter(c => c.id !== "pick_only" && (c.lvl || 1) <= lvl);
+          defaults[t] = (plantable.length ? plantable[plantable.length - 1] : CROPS[t][0]).id;
         }
       }
     }
@@ -1144,7 +1196,37 @@ export default function App() {
     setShowCropSelect(false);
     setShowRoute(true);
   };
-  const toggleChk = n => setChecked(p => ({ ...p, [n]: !p[n] }));
+  const toggleChk = useCallback(n => setChecked(p => ({ ...p, [n]: !p[n] })), []);
+
+  const [copied, setCopied] = useState("");
+  const copyText = async (text, label) => {
+    try { await navigator.clipboard.writeText(text); setCopied(label); setTimeout(() => setCopied(""), 1800); }
+    catch (e) { setCopied("Copy failed"); setTimeout(() => setCopied(""), 1800); }
+  };
+  const routeToText = () => {
+    if (!route) return "";
+    const lines = ["OSRS Farming Route", ""];
+    route.forEach(s => {
+      if (s.isBank) {
+        lines.push(`[Bank] ${s.isInitial ? "Starting Bank" : "Bank stop"} — ${s.bankNote || ""}`);
+        (s.bankCategories || []).forEach(c => lines.push(`   ${c.label}: ${c.items.join(", ")}`));
+      } else {
+        lines.push(`${s.step}. ${s.location} (${s.region}) — ${s.teleport}`);
+        if (s.farmingItems && s.farmingItems.length) lines.push(`   Items: ${s.farmingItems.join(", ")}`);
+      }
+    });
+    return lines.join("\n");
+  };
+  const shoppingToText = () => {
+    if (!route) return "";
+    const { equipment, farming } = getAllRouteItems(route);
+    return [
+      "OSRS Farming — shopping list",
+      "Tools (equip/carry): Spade, Seed dibber, Rake",
+      equipment.length ? `Teleport gear: ${equipment.join(", ")}` : "",
+      farming.length ? `Seeds & payments: ${farming.join(", ")}` : "",
+    ].filter(Boolean).join("\n");
+  };
 
   const progress = route ? route.filter(s => !s.isBank && checked[s.step]).length : 0;
   const total = route ? route.filter(s => !s.isBank).length : 0;
@@ -1159,6 +1241,7 @@ export default function App() {
     { name: "All Trees", types: ["tree", "fruitTree", "calquat"] },
     { name: "Everything", types: PATCH_TYPES.map(p => p.id) },
   ];
+  const canGo = !!selTypes.length && !isProfileEmpty(prof) && reachableCount > 0;
 
   return (
     <div style={{ minHeight: "100vh", background: "#111", color: "#ccc", fontFamily: "'Crimson Text', Georgia, serif" }}>
@@ -1188,7 +1271,7 @@ export default function App() {
           <>
             {/* Profile setup banner */}
             {isProfileEmpty(prof) && (
-              <div onClick={() => setShowProf(true)} style={{
+              <div role="button" tabIndex={0} onClick={() => setShowProf(true)} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowProf(true); } }} style={{
                 marginBottom: 24, padding: 20, borderRadius: 12, cursor: "pointer",
                 background: "linear-gradient(135deg, #2a1a08, #1a1208)",
                 border: "2px solid #c9a84c88",
@@ -1217,7 +1300,7 @@ export default function App() {
 
             <div style={{ marginBottom: 28 }}>
               <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 16, color: "#c9a84c", marginBottom: 6 }}>Select Patch Types</h2>
-              <p style={{ color: "#666", fontSize: 13, marginBottom: 16 }}>Choose which patches to include in your farming run</p>
+              <p style={{ color: "#8a8a8a", fontSize: 13, marginBottom: 16 }}>Choose which patches to include in your farming run</p>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
                 {presets.map(p => {
                   const act = p.types.length === selTypes.length && p.types.every(t => selTypes.includes(t));
@@ -1230,22 +1313,26 @@ export default function App() {
                   const cnt = PATCHES.filter(p => p.type === pt.id && meetsReqs(p, prof)).length;
                   return <button key={pt.id} onClick={() => toggleType(pt.id)} style={{ display: "flex", alignItems: "center", gap: 8, padding: 12, borderRadius: 10, cursor: "pointer", background: sel ? pt.color + "15" : "#1a1a1a", border: `2px solid ${sel ? pt.color + "66" : "#2a2a2a"}`, color: sel ? pt.color : "#666", fontFamily: "'Crimson Text', serif", fontSize: 14, fontWeight: 600, textAlign: "left" }}>
                     <span style={{ fontSize: 20 }}>{pt.icon}</span>
-                    <div><div>{pt.label}</div><div style={{ fontSize: 11, color: "#555", fontWeight: 400 }}>{cnt} patch{cnt !== 1 ? "es" : ""}</div></div>
+                    <div><div>{pt.label}</div><div style={{ fontSize: 11, color: sel ? pt.color : "#8a8a8a", fontWeight: 400 }}>{cnt} patch{cnt !== 1 ? "es" : ""}</div></div>
                   </button>;
                 })}
               </div>
             </div>
-            <button onClick={go} disabled={!selTypes.length || isProfileEmpty(prof)} style={{ width: "100%", padding: 16, borderRadius: 12, border: "none", background: selTypes.length && !isProfileEmpty(prof) ? "linear-gradient(135deg, #c9a84c, #8b7028)" : "#333", color: selTypes.length && !isProfileEmpty(prof) ? "#1a1a1a" : "#666", fontSize: 16, fontWeight: 800, fontFamily: "'Cinzel', serif", letterSpacing: 1, cursor: selTypes.length && !isProfileEmpty(prof) ? "pointer" : "not-allowed", boxShadow: selTypes.length && !isProfileEmpty(prof) ? "0 4px 20px rgba(201,168,76,0.3)" : "none" }}>
-              {isProfileEmpty(prof) ? "⚙ Set Up Profile First" : selTypes.length ? "Generate Optimal Route →" : "Select at Least One Patch Type"}
+            <button onClick={go} disabled={!canGo} style={{ width: "100%", padding: 16, borderRadius: 12, border: "none", background: canGo ? "linear-gradient(135deg, #c9a84c, #8b7028)" : "#333", color: canGo ? "#1a1a1a" : "#888", fontSize: 16, fontWeight: 800, fontFamily: "'Cinzel', serif", letterSpacing: 1, cursor: canGo ? "pointer" : "not-allowed", boxShadow: canGo ? "0 4px 20px rgba(201,168,76,0.3)" : "none" }}>
+              {isProfileEmpty(prof) ? "⚙ Set Up Profile First" : !selTypes.length ? "Select at Least One Patch Type" : reachableCount === 0 ? "No reachable patches for this selection" : "Generate Optimal Route →"}
             </button>
+            {!isProfileEmpty(prof) && !!selTypes.length && reachableCount === 0 && (
+              <div style={{ marginTop: 10, fontSize: 12, color: "#cc8a55", textAlign: "center" }}>None of the selected patch types are reachable with your current profile. Try enabling more teleports/unlocks, raising your Farming level, or picking other patch types.</div>
+            )}
             <div style={{ marginTop: 28, padding: 16, background: "#1a1a1a", borderRadius: 10, border: `1px solid ${isProfileEmpty(prof) ? "#44220088" : "#2a2a2a"}` }}>
               <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 13, color: "#888", marginBottom: 10, textTransform: "uppercase", letterSpacing: 1 }}>Profile Summary</h3>
               {isProfileEmpty(prof) ? (
-                <div style={{ fontSize: 12, color: "#665533", fontStyle: "italic" }}>
+                <div style={{ fontSize: 12, color: "#a08a5a", fontStyle: "italic" }}>
                   No profile configured yet. Click "Edit Profile" or the banner above to get started.
                 </div>
               ) : (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 16, fontSize: 12, color: "#666" }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 16, fontSize: 12, color: "#8a8a8a" }}>
+                  <span><strong style={{ color: "#e0c97f" }}>{prof.farmingLevel || 1}</strong> Farming</span>
                   <span><strong style={{ color: "#e0c97f" }}>{Object.values(prof.quests).filter(Boolean).length}</strong> quests</span>
                   <span><strong style={{ color: "#e0c97f" }}>{Object.values(prof.diaries).filter(v => v && v !== "None").length}</strong> diaries</span>
                   <span><strong style={{ color: "#e0c97f" }}>{Object.values(prof.teleports).filter(Boolean).length}</strong> teleports</span>
@@ -1261,7 +1348,7 @@ export default function App() {
               <button onClick={() => setShowCropSelect(false)} style={{ background: "#1e1e1e", border: "1px solid #333", color: "#c9a84c", padding: "8px 16px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontFamily: "'Cinzel', serif", fontWeight: 600 }}>← Back</button>
               <div>
                 <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 16, color: "#e0c97f", margin: 0 }}>Select Your Crops</h2>
-                <p style={{ color: "#666", fontSize: 12, margin: "2px 0 0" }}>Choose what to plant at each patch type</p>
+                <p style={{ color: "#8a8a8a", fontSize: 12, margin: "2px 0 0" }}>Choose what to plant at each patch type (crops above your Farming level are locked)</p>
               </div>
             </div>
 
@@ -1270,8 +1357,11 @@ export default function App() {
                 const pt = PATCH_TYPES.find(p => p.id === typeId);
                 const crops = CROPS[typeId];
                 const patchCount = PATCHES.filter(p => p.type === typeId && meetsReqs(p, prof)).length;
+                // The engine treats each allotment location as 2 plantable patches.
+                const effCount = patchCount * (typeId === "allotment" ? 2 : 1);
                 const selected = cropSelections[typeId];
                 const selectedCrop = crops.find(c => c.id === selected);
+                const lvl = prof.farmingLevel || 1;
 
                 return (
                   <div key={typeId} style={{
@@ -1281,7 +1371,7 @@ export default function App() {
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
                       <span style={{ fontSize: 20 }}>{pt?.icon}</span>
                       <span style={{ fontWeight: 700, fontSize: 14, color: pt?.color || "#ccc", fontFamily: "'Cinzel', serif" }}>{pt?.label}</span>
-                      <span style={{ fontSize: 11, color: "#666" }}>({patchCount} patch{patchCount !== 1 ? "es" : ""})</span>
+                      <span style={{ fontSize: 11, color: "#8a8a8a" }}>({patchCount} patch{patchCount !== 1 ? "es" : ""})</span>
                     </div>
                     <select
                       value={selected || ""}
@@ -1292,22 +1382,25 @@ export default function App() {
                         fontSize: 14, fontFamily: "'Crimson Text', serif",
                       }}
                     >
-                      {crops.map(c => (
-                        <option key={c.id} value={c.id}>
-                          {c.id === "pick_only" ? c.name : `${c.name} (Lvl ${c.lvl}) — ${c.seed}${c.payment ? ` | Pay: ${c.payment}` : " | No protection"}`}
-                        </option>
-                      ))}
+                      {crops.map(c => {
+                        const tooHigh = c.id !== "pick_only" && (c.lvl || 1) > lvl;
+                        return (
+                          <option key={c.id} value={c.id} disabled={tooHigh}>
+                            {c.id === "pick_only" ? c.name : `${c.name} (Lvl ${c.lvl})${tooHigh ? " 🔒" : ""} — ${c.seed}${c.payment ? ` | Pay: ${c.payment}` : " | No protection"}`}
+                          </option>
+                        );
+                      })}
                     </select>
                     {selectedCrop && selectedCrop.id !== "pick_only" && (
                       <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
                         {selectedCrop.seed && (
                           <span style={{ padding: "2px 8px", borderRadius: 4, fontSize: 10, background: "#1a2a1a", color: "#88cc88", border: "1px solid #2a442a" }}>
-                            Bring: {selectedCrop.seed} × {patchCount}
+                            Bring: {selectedCrop.seed} × {effCount}
                           </span>
                         )}
                         {selectedCrop.payment && (
                           <span style={{ padding: "2px 8px", borderRadius: 4, fontSize: 10, background: "#2a2210", color: "#ddaa55", border: "1px solid #443820" }}>
-                            Pay: {selectedCrop.payment} × {patchCount}
+                            Pay: {selectedCrop.payment} × {effCount}
                           </span>
                         )}
                       </div>
@@ -1340,13 +1433,20 @@ export default function App() {
               <button onClick={() => { setShowRoute(false); setShowCropSelect(true); }} style={{ background: "#1e1e1e", border: "1px solid #333", color: "#c9a84c", padding: "8px 16px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontFamily: "'Cinzel', serif", fontWeight: 600 }}>← Back</button>
               <div style={{ flex: 1 }}>
                 <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 16, color: "#e0c97f", margin: 0 }}>Your Farming Route</h2>
-                <p style={{ color: "#666", fontSize: 12, margin: "2px 0 0" }}>
+                <p style={{ color: "#8a8a8a", fontSize: 12, margin: "2px 0 0" }}>
                   {total} stop{total !== 1 ? "s" : ""}
-                  {bankCount > 0 && <span style={{ color: "#8888ee" }}> • {bankCount} bank stop{bankCount !== 1 ? "s" : ""}</span>}
-                  {upgradeCount > 0 && <span style={{ color: "#7a7aee" }}> • {upgradeCount} upgrade{upgradeCount !== 1 ? "s" : ""}</span>}
+                  {bankCount > 0 && <span style={{ color: "#9a9aee" }}> • {bankCount} bank stop{bankCount !== 1 ? "s" : ""}</span>}
+                  {upgradeCount > 0 && <span style={{ color: "#9a9aee" }}> • {upgradeCount} upgrade{upgradeCount !== 1 ? "s" : ""}</span>}
                 </p>
               </div>
-              {total > 0 && <button onClick={() => setChecked({})} style={{ background: "none", border: "1px solid #333", color: "#888", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>Reset</button>}
+              {total > 0 && (
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  {copied && <span style={{ fontSize: 11, color: "#88cc88" }}>{copied === "Copy failed" ? "✗ " + copied : "✓ Copied " + copied}</span>}
+                  <button onClick={() => copyText(shoppingToText(), "list")} title="Copy shopping list" style={{ background: "none", border: "1px solid #333", color: "#aaa", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>📋 List</button>
+                  <button onClick={() => copyText(routeToText(), "route")} title="Copy full route" style={{ background: "none", border: "1px solid #333", color: "#aaa", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>📋 Route</button>
+                  <button onClick={() => setChecked({})} style={{ background: "none", border: "1px solid #333", color: "#aaa", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>Reset</button>
+                </div>
+              )}
             </div>
 
             {/* Total items overview */}
@@ -1385,13 +1485,13 @@ export default function App() {
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {route && route.length > 0 ? route.map(s => (
                 <div key={s.step} style={{ animation: `fadeIn 0.3s ease ${s.step * 0.04}s both` }}>
-                  {s.isBank ? <BankStop step={s} /> : <RouteStep step={s} checked={!!checked[s.step]} onToggle={() => toggleChk(s.step)} />}
+                  {s.isBank ? <BankStop step={s} /> : <RouteStep step={s} checked={!!checked[s.step]} onToggle={toggleChk} />}
                 </div>
               )) : (
-                <div style={{ textAlign: "center", padding: "48px 24px", color: "#555", fontSize: 14 }}>
+                <div style={{ textAlign: "center", padding: "48px 24px", color: "#8a8a8a", fontSize: 14 }}>
                   <div style={{ fontSize: 32, marginBottom: 12 }}>🚫</div>
-                  No patches available for your current profile.<br />
-                  <span style={{ fontSize: 12 }}>Try updating your profile or selecting different patch types.</span>
+                  No reachable patches for your current profile and selection.<br />
+                  <span style={{ fontSize: 12 }}>Try enabling more teleports/unlocks, raising your Farming level, or selecting different patch types.</span>
                 </div>
               )}
             </div>
@@ -1399,9 +1499,9 @@ export default function App() {
             {/* Legend */}
             {route && route.length > 0 && (
               <div style={{ marginTop: 24, padding: 14, background: "#1a1a1a", borderRadius: 10, border: "1px solid #222" }}>
-                <div style={{ fontSize: 11, color: "#555", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Teleport Speed Legend</div>
+                <div style={{ fontSize: 11, color: "#8a8a8a", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Teleport Speed Legend</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  {[1,2,3,4,5].map(s => <div key={s} style={{ display: "flex", alignItems: "center", gap: 10 }}><SpeedBadge speed={s} /><span style={{ fontSize: 11, color: "#666" }}>{SPD[s].d}</span></div>)}
+                  {[1,2,3,4,5].map(s => <div key={s} style={{ display: "flex", alignItems: "center", gap: 10 }}><SpeedBadge speed={s} /><span style={{ fontSize: 11, color: "#9a9a9a" }}>{SPD[s].d}</span></div>)}
                 </div>
               </div>
             )}
@@ -1409,7 +1509,7 @@ export default function App() {
         )}
       </main>
 
-      {showProf && <ProfileEditor profile={prof} setProfile={handleSave} onClose={() => { setShowProf(false); setFirst(false); }} />}
+      {showProf && <ProfileEditor profile={prof} setProfile={handleSave} onClose={() => setShowProf(false)} />}
     </div>
   );
 }
