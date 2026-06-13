@@ -6,26 +6,18 @@ import { useState } from "react";
 //        4=Slow (60s+ or multi-step), 5=Very Slow (city TP + long run)
 // ═══════════════════════════════════════════════════════════════
 
+// Only quests that actually gate a farming patch or a patch teleport are listed,
+// so the profile editor isn't cluttered with toggles that change nothing.
 const QUESTS = [
   { id: "myArm", name: "My Arm's Big Adventure" },
   { id: "makingFriends", name: "Making Friends with My Arm" },
   { id: "songOfElves", name: "Song of the Elves" },
   { id: "boneVoyage", name: "Bone Voyage" },
-  { id: "ghostsAhoy", name: "Ghosts Ahoy" },
-  { id: "fairyTaleII", name: "Fairy Tale II (started)" },
-  { id: "royalTrouble", name: "Royal Trouble" },
-  { id: "monkeyMadnessII", name: "Monkey Madness II" },
-  { id: "dragonSlayerII", name: "Dragon Slayer II" },
-  { id: "mourningsEndII", name: "Mourning's End Part II" },
-  { id: "regicide", name: "Regicide" },
-  { id: "cabinFever", name: "Cabin Fever" },
-  { id: "rumDeal", name: "Rum Deal" },
+  { id: "fremennikTrials", name: "The Fremennik Trials" },
+  { id: "watchtower", name: "Watchtower" },
+  { id: "mourningsEndI", name: "Mourning's End Part I (started)" },
   { id: "theGreatBrainRobbery", name: "The Great Brain Robbery" },
-  { id: "deathOnTheIsle", name: "Death on the Isle" },
   { id: "childrenOfTheSun", name: "Children of the Sun" },
-  { id: "desertTreasureII", name: "Desert Treasure II" },
-  { id: "thePath", name: "The Path of Glouphrie" },
-  { id: "aKingdomDivided", name: "A Kingdom Divided" },
 ];
 
 const DIARIES = [
@@ -50,7 +42,7 @@ const TELEPORTS = [
   { id: "ardougneCloak", name: "Ardougne Cloak 2+", cat: "diary" },
   { id: "ectophial", name: "Ectophial", cat: "quest" },
   { id: "spiritTree", name: "Spirit Trees (base network)", cat: "transport",
-    desc: "TP to Varrock GE first, then use network: Gnome Stronghold, TGV, Khazard Battlefield" },
+    desc: "Base network (no diary needed): Grand Exchange, Gnome Stronghold, Tree Gnome Village, Khazard Battlefield, Feldip Hills" },
   { id: "spiritTreeFarmingGuild", name: "Spirit Tree: Farming Guild (planted)", cat: "planted",
     desc: "Requires 83 Farming + spirit tree planted" },
   { id: "spiritTreePrif", name: "Spirit Tree: Prifddinas", cat: "planted",
@@ -73,14 +65,17 @@ const TELEPORTS = [
   { id: "amuletOfGlory", name: "Amulet of Glory", cat: "jewellery" },
   { id: "necklaceOfPassage", name: "Necklace of Passage", cat: "jewellery" },
   { id: "slayerRing", name: "Slayer Ring", cat: "jewellery" },
+  { id: "ringOfDueling", name: "Ring of Dueling", cat: "jewellery" },
   { id: "teleportCrystal", name: "Teleport Crystal", cat: "item" },
   { id: "lunarSpellbook", name: "Lunar Spellbook", cat: "spellbook" },
   { id: "ancientSpellbook", name: "Ancient Spellbook", cat: "spellbook" },
+  { id: "arceuusSpellbook", name: "Arceuus Spellbook", cat: "spellbook" },
   // Standard Spellbook is always available to all accounts — not toggleable
   { id: "stonyBasalt", name: "Stony Basalt", cat: "item" },
   { id: "icyBasalt", name: "Icy Basalt", cat: "item" },
   { id: "farmingCape", name: "Farming Cape (99)", cat: "item" },
   { id: "quetzalWhistle", name: "Quetzal Whistle", cat: "item" },
+  { id: "digsitePendant", name: "Digsite Pendant", cat: "item" },
   { id: "kharedstsMemoirs", name: "Kharedst's Memoirs / Book of the Dead", cat: "item" },
   { id: "pendantOfAtes", name: "Pendant of Ates", cat: "item" },
   { id: "ringOfElements", name: "Ring of the Elements", cat: "jewellery" },
@@ -96,7 +91,7 @@ const OTHER_UNLOCKS = [
   { id: "harmonyIsland", name: "Harmony Island Access" },
   { id: "varlamoreAccess", name: "Varlamore Access" },
   { id: "kastoriQuetzal", name: "Quetzal landing site at Kastori" },
-  { id: "fireOfEternalLight", name: "Fire of Eternal Light (Weiss)" },
+  { id: "fireOfNourishment", name: "Fire of Nourishment (Weiss herb patch)" },
 ];
 
 // ═══════════════════════════════════════════════════════════════
@@ -167,16 +162,16 @@ const PATCHES = [
     teleports: [
       { method: "Icy Basalt teleport", requires: { teleports: ["icyBasalt"] }, speed: 1, items: ["Icy Basalt"] },
       { method: "Fairy Ring DKS → Larry's boat, long run", requires: { teleports: ["fairyRing"] }, speed: 4, items: ["Dramen/Lunar staff"] },
-    ], requirements: { quests: ["makingFriends"], unlocks: ["fireOfEternalLight"] },
-    notes: "Disease-free. Req: Making Friends with My Arm + Fire of Eternal Light." },
+    ], requirements: { quests: ["makingFriends"], unlocks: ["fireOfNourishment"] },
+    notes: "Disease-free. Req: Making Friends with My Arm + Fire of Nourishment built." },
   { id: "herb_harmony", name: "Harmony Island", type: "herb",
     proximityGroup: "harmony_herb", region: "Morytania", routePriority: 50,
     farmingItems: [{ name: "Seed", slots: 1 }],
     teleports: [
-      { method: "Harmony Island Teleport (Arceuus)", requires: { teleports: ["ancientSpellbook"] }, speed: 2, items: ["Runes (Arceuus)"] },
+      { method: "Harmony Island Teleport (Arceuus)", requires: { teleports: ["arceuusSpellbook"], quests: ["theGreatBrainRobbery"] }, speed: 2, items: ["Runes (Arceuus: Soul, Law, Nature)"] },
       { method: "Ectophial → docks → boat", requires: { teleports: ["ectophial"] }, speed: 5, items: ["Ectophial"] },
-    ], requirements: { diaries: { morytania: "Elite" }, unlocks: ["harmonyIsland"] },
-    notes: "Disease-free. Req: Elite Morytania Diary." },
+    ], requirements: { quests: ["theGreatBrainRobbery"], diaries: { morytania: "Elite" }, unlocks: ["harmonyIsland"] },
+    notes: "Disease-free. Req: The Great Brain Robbery + Elite Morytania Diary." },
   { id: "herb_farmingGuild", name: "Farming Guild", type: "herb",
     proximityGroup: "farming_guild", region: "Kourend", routePriority: 5,
     farmingItems: [{ name: "Seed", slots: 1 }],
@@ -248,12 +243,12 @@ const PATCHES = [
     notes: "Allotment + flower only — no herb patch." },
   { id: "allot_harmony", name: "Harmony Island", type: "allotment",
     proximityGroup: "harmony_allot", region: "Morytania", routePriority: 50,
-    farmingItems: [{ name: "Seeds ×3", slots: 1 }],
+    farmingItems: [{ name: "Seeds ×3", slots: 1 }, { name: "Compost", slots: 1 }],
     teleports: [
-      { method: "Harmony Island Teleport (Arceuus)", requires: { teleports: ["ancientSpellbook"] }, speed: 2, items: ["Runes (Arceuus)"] },
+      { method: "Harmony Island Teleport (Arceuus)", requires: { teleports: ["arceuusSpellbook"], quests: ["theGreatBrainRobbery"] }, speed: 2, items: ["Runes (Arceuus: Soul, Law, Nature)"] },
       { method: "Ectophial → boat", requires: { teleports: ["ectophial"] }, speed: 5, items: ["Ectophial"] },
-    ], requirements: { unlocks: ["harmonyIsland"] },
-    notes: "Single allotment only." },
+    ], requirements: { quests: ["theGreatBrainRobbery"], unlocks: ["harmonyIsland"] },
+    notes: "Single allotment only. Req: The Great Brain Robbery." },
   { id: "allot_varlamore", name: "Civitas illa Fortis", type: "allotment",
     proximityGroup: "civitas", region: "Varlamore", routePriority: 40,
     farmingItems: [{ name: "Seeds ×3", slots: 1 }, { name: "Compost", slots: 1 }],
@@ -317,13 +312,15 @@ const PATCHES = [
       { method: "Skills Necklace → Farming Guild", requires: { teleports: ["skillsNecklace"] }, speed: 1, items: ["Skills Necklace"] },
       { method: "Farming Cape teleport", requires: { teleports: ["farmingCape"] }, speed: 1, items: ["Farming Cape"] },
     ], requirements: { unlocks: ["farmingGuild"] }, notes: "Req: 65 Farming." },
-  { id: "tree_auburnvale", name: "Auburnvale", type: "tree",
-    proximityGroup: "auburnvale_tree", region: "Varlamore", routePriority: 35,
+  { id: "tree_nemusRetreat", name: "Nemus Retreat", type: "tree",
+    proximityGroup: "nemus_retreat", region: "Varlamore", routePriority: 35,
     farmingItems: [{ name: "Sapling", slots: 1 }, { name: "Payment", slots: 1 }],
     teleports: [
-      { method: "Quetzal Whistle → Varlamore, run east", requires: { teleports: ["quetzalWhistle"] }, speed: 2, items: ["Quetzal Whistle"] },
+      { method: "Pendant of Ates → Nemus Retreat, run north", requires: { teleports: ["pendantOfAtes"] }, speed: 2, items: ["Pendant of Ates"] },
+      { method: "Fairy Ring AIS, run NW (cross river)", requires: { teleports: ["fairyRing"] }, speed: 3, items: ["Dramen/Lunar staff"] },
+      { method: "Quetzal Whistle → Quetzacalli Gorge, run W (Mountain Guide)", requires: { teleports: ["quetzalWhistle"] }, speed: 4, items: ["Quetzal Whistle"] },
     ], requirements: { quests: ["childrenOfTheSun"], unlocks: ["varlamoreAccess"] },
-    notes: "Req: Children of the Sun." },
+    notes: "In Auburn Valley (not Auburnvale town). Req: Children of the Sun." },
 
   // ═══ FRUIT TREE PATCHES ═══
   // Gnome Stronghold fruit tree shares proximityGroup with tree patch
@@ -364,7 +361,7 @@ const PATCHES = [
     farmingItems: [{ name: "Sapling", slots: 1 }, { name: "Payment", slots: 1 }],
     teleports: [
       { method: "Teleport Crystal → Lletya", requires: { teleports: ["teleportCrystal"] }, speed: 1, items: ["Teleport Crystal"] },
-    ], requirements: { quests: ["regicide"] }, notes: "Req: Regicide." },
+    ], requirements: { quests: ["mourningsEndI"] }, notes: "Req: Mourning's End Part I (started)." },
   { id: "fruit_farmingGuild", name: "Farming Guild", type: "fruitTree",
     proximityGroup: "farming_guild", region: "Kourend", routePriority: 5,
     farmingItems: [{ name: "Sapling", slots: 1 }, { name: "Payment", slots: 1 }],
@@ -383,24 +380,27 @@ const PATCHES = [
 
   // ═══ BUSH PATCHES ═══
   { id: "bush_champions", name: "Champions' Guild", type: "bush", proximityGroup: "champions", region: "Misthalin", routePriority: 10, farmingItems: [{ name: "Sapling", slots: 1 }, { name: "Payment", slots: 1 }], teleports: [{ method: "Combat Bracelet → Champions' Guild", requires: { teleports: ["combatBracelet"] }, speed: 1, items: ["Combat Bracelet"] }, { method: "Varrock Teleport, run SW", requires: { teleports: ["standardSpellbook"] }, speed: 3, items: ["Law rune", "Air rune", "Fire rune"] }], notes: null },
-  { id: "bush_rimmington", name: "Rimmington", type: "bush", proximityGroup: "rimmington", region: "Asgarnia", routePriority: 15, farmingItems: [{ name: "Sapling", slots: 1 }, { name: "Payment", slots: 1 }], teleports: [{ method: "Skills Necklace → Crafting Guild, run S", requires: { teleports: ["skillsNecklace"] }, speed: 2, items: ["Skills Necklace"] }, { method: "Falador Teleport, run SW", requires: {}, speed: 4, items: ["Law rune", "Air rune", "Water rune"] }], notes: null },
+  { id: "bush_rimmington", name: "Rimmington", type: "bush", proximityGroup: "rimmington", region: "Asgarnia", routePriority: 15, farmingItems: [{ name: "Sapling", slots: 1 }, { name: "Payment", slots: 1 }], teleports: [{ method: "Skills Necklace → Crafting Guild, run S", requires: { teleports: ["skillsNecklace"] }, speed: 2, items: ["Skills Necklace"] }, { method: "Falador Teleport, run SW", requires: { teleports: ["standardSpellbook"] }, speed: 4, items: ["Law rune", "Air rune", "Water rune"] }], notes: null },
   { id: "bush_ardougne", name: "South Ardougne", type: "bush", proximityGroup: "ardougne_south_bush", region: "Kandarin", routePriority: 20, farmingItems: [{ name: "Sapling", slots: 1 }, { name: "Payment", slots: 1 }], teleports: [{ method: "Ardougne Cloak 1+ → Monastery", requires: { teleports: ["ardougneCloak"] }, speed: 1, items: ["Ardougne Cloak 1+"] }, { method: "Fairy Ring DJP", requires: { teleports: ["fairyRing"] }, speed: 2, items: ["Dramen/Lunar staff"] }, { method: "Spirit Tree → Khazard Battlefield", requires: { teleports: ["spiritTree"] }, speed: 3, items: [] }], notes: null },
-  { id: "bush_etceteria", name: "Etceteria", type: "bush", proximityGroup: "etceteria", region: "Fremennik", routePriority: 30, farmingItems: [{ name: "Sapling", slots: 1 }, { name: "Payment", slots: 1 }], teleports: [{ method: "Spirit Tree → Etceteria (planted)", requires: { teleports: ["spiritTreeEtceteria"] }, speed: 1, items: [] }, { method: "Ring of Wealth → Miscellania", requires: { teleports: ["ringOfWealth"] }, speed: 2, items: ["Ring of Wealth"] }, { method: "Fairy Ring CIP", requires: { teleports: ["fairyRing"] }, speed: 3, items: ["Dramen/Lunar staff"] }], requirements: { quests: ["royalTrouble"] }, notes: null },
+  { id: "bush_etceteria", name: "Etceteria", type: "bush", proximityGroup: "etceteria", region: "Fremennik", routePriority: 30, farmingItems: [{ name: "Sapling", slots: 1 }, { name: "Payment", slots: 1 }], teleports: [{ method: "Spirit Tree → Etceteria (planted)", requires: { teleports: ["spiritTreeEtceteria"] }, speed: 1, items: [] }, { method: "Ring of Wealth → Miscellania", requires: { teleports: ["ringOfWealth"] }, speed: 2, items: ["Ring of Wealth"] }, { method: "Fairy Ring CIP", requires: { teleports: ["fairyRing"] }, speed: 3, items: ["Dramen/Lunar staff"] }], requirements: { quests: ["fremennikTrials"] }, notes: "Req: The Fremennik Trials (boat to Miscellania)." },
   { id: "bush_farmingGuild", name: "Farming Guild", type: "bush", proximityGroup: "farming_guild", region: "Kourend", routePriority: 5, farmingItems: [{ name: "Sapling", slots: 1 }, { name: "Payment", slots: 1 }], teleports: [{ method: "Skills Necklace → FG", requires: { teleports: ["skillsNecklace"] }, speed: 1, items: ["Skills Necklace"] }], requirements: { unlocks: ["farmingGuild45"] }, notes: "Req: 45 Farming (east wing)." },
 
   // ═══ HOPS PATCHES ═══
   { id: "hops_lumbridge", name: "Lumbridge", type: "hops", proximityGroup: "lumbridge_hops", region: "Misthalin", routePriority: 10, farmingItems: [{ name: "Seeds ×4", slots: 1 }], teleports: [{ method: "Lumbridge Teleport, run N", requires: { teleports: ["standardSpellbook"] }, speed: 2, items: ["Law rune", "Air rune", "Earth rune"] }], notes: null },
   { id: "hops_seers", name: "McGrubor's Wood", type: "hops", proximityGroup: "seers_hops", region: "Kandarin", routePriority: 20, farmingItems: [{ name: "Seeds ×4", slots: 1 }], teleports: [{ method: "Combat Bracelet → Ranging Guild", requires: { teleports: ["combatBracelet"] }, speed: 2, items: ["Combat Bracelet"] }, { method: "Fairy Ring ALS", requires: { teleports: ["fairyRing"] }, speed: 2, items: ["Dramen/Lunar staff"] }], notes: null },
-  { id: "hops_yanille", name: "Yanille", type: "hops", proximityGroup: "yanille_hops", region: "Kandarin", routePriority: 25, farmingItems: [{ name: "Seeds ×4", slots: 1 }], teleports: [{ method: "Watchtower TP → Yanille (Hard Ardy)", requires: { teleports: ["standardSpellbook"] }, speed: 2, items: ["Law rune", "Earth rune"] }, { method: "Fairy Ring CIQ", requires: { teleports: ["fairyRing"] }, speed: 3, items: ["Dramen/Lunar staff"] }], notes: null },
+  { id: "hops_yanille", name: "Yanille", type: "hops", proximityGroup: "yanille_hops", region: "Kandarin", routePriority: 25, farmingItems: [{ name: "Seeds ×4", slots: 1 }], teleports: [{ method: "Watchtower Teleport → top of Watchtower (N of patch)", requires: { teleports: ["standardSpellbook"], quests: ["watchtower"] }, speed: 2, items: ["Law rune ×2", "Earth rune ×2"] }, { method: "Fairy Ring CIQ", requires: { teleports: ["fairyRing"] }, speed: 3, items: ["Dramen/Lunar staff"] }], notes: "Req for Watchtower TP: Watchtower quest." },
   { id: "hops_entrana", name: "Entrana", type: "hops", proximityGroup: "entrana_hops", region: "Asgarnia", routePriority: 40, farmingItems: [{ name: "Seeds ×4", slots: 1 }], teleports: [{ method: "Explorer's Ring → Port Sarim + boat", requires: { teleports: ["explorerRing"] }, speed: 3, items: ["Explorer's Ring 2+"] }], notes: "No weapons/armour on Entrana!" },
+  { id: "hops_aldarin", name: "Aldarin", type: "hops", proximityGroup: "aldarin", region: "Varlamore", routePriority: 45, farmingItems: [{ name: "Seeds ×4", slots: 1 }], teleports: [{ method: "Fairy Ring CKQ, run S into Aldarin", requires: { teleports: ["fairyRing"] }, speed: 3, items: ["Dramen/Lunar staff"] }, { method: "Quetzal Whistle → Civitas illa Fortis, charter/run S", requires: { teleports: ["quetzalWhistle"] }, speed: 5, items: ["Quetzal Whistle"] }], requirements: { unlocks: ["varlamoreAccess"] }, notes: "Varlamore hops patch (gardener Ercos)." },
 
   // ═══ SPECIAL PATCHES ═══
-  { id: "cactus_alkharid", name: "Al Kharid Cactus", type: "cactus", proximityGroup: "alkharid_cactus", region: "Desert", routePriority: 10, farmingItems: [{ name: "Cactus seed", slots: 1 }], teleports: [{ method: "Amulet of Glory → Al Kharid", requires: { teleports: ["amuletOfGlory"] }, speed: 2, items: ["Amulet of Glory"] }, { method: "Fairy Ring BIQ", requires: { teleports: ["fairyRing"] }, speed: 3, items: ["Dramen/Lunar staff"] }], notes: null },
+  { id: "cactus_alkharid", name: "Al Kharid Cactus", type: "cactus", proximityGroup: "alkharid_cactus", region: "Desert", routePriority: 10, farmingItems: [{ name: "Cactus seed", slots: 1 }], teleports: [{ method: "Amulet of Glory → Al Kharid", requires: { teleports: ["amuletOfGlory"] }, speed: 2, items: ["Amulet of Glory"] }, { method: "Ring of Dueling → Emir's Arena, run N", requires: { teleports: ["ringOfDueling"] }, speed: 3, items: ["Ring of Dueling"] }], notes: null },
   { id: "cactus_farmingGuild", name: "Farming Guild Cactus", type: "cactus", proximityGroup: "farming_guild", region: "Kourend", routePriority: 5, farmingItems: [{ name: "Cactus seed", slots: 1 }], teleports: [{ method: "Skills Necklace → FG", requires: { teleports: ["skillsNecklace"] }, speed: 1, items: ["Skills Necklace"] }], requirements: { unlocks: ["farmingGuild45"] }, notes: "Req: 45 Farming (east wing)." },
-  { id: "calquat", name: "Calquat (Tai Bwo Wannai)", type: "calquat", proximityGroup: "calquat", region: "Karamja", routePriority: 10, farmingItems: [{ name: "Calquat sapling", slots: 1 }, { name: "Payment (8 poison ivy berries)", slots: 1 }], teleports: [{ method: "Fairy Ring CKR, run S", requires: { teleports: ["fairyRing"] }, speed: 2, items: ["Dramen/Lunar staff"] }, { method: "Glory → Karamja, run far S", requires: { teleports: ["amuletOfGlory"] }, speed: 4, items: ["Amulet of Glory"] }], notes: "Only calquat patch in-game." },
-  { id: "seaweed", name: "Underwater Seaweed", type: "seaweed", proximityGroup: "seaweed", region: "Fossil Island", routePriority: 10, farmingItems: [{ name: "Seaweed spore ×2", slots: 1 }], teleports: [{ method: "Fairy Ring AKQ → dive spot", requires: { teleports: ["fairyRing"] }, speed: 2, items: ["Dramen/Lunar staff"] }], requirements: { quests: ["boneVoyage"], unlocks: ["fossilIsland"] }, notes: "Two patches. Req: Bone Voyage." },
+  { id: "calquat", name: "Calquat (Tai Bwo Wannai)", type: "calquat", proximityGroup: "calquat", region: "Karamja", routePriority: 10, farmingItems: [{ name: "Calquat sapling", slots: 1 }, { name: "Payment (8 poison ivy berries)", slots: 1 }], teleports: [{ method: "Fairy Ring CKR, run S", requires: { teleports: ["fairyRing"] }, speed: 2, items: ["Dramen/Lunar staff"] }, { method: "Glory → Karamja, run far S", requires: { teleports: ["amuletOfGlory"] }, speed: 4, items: ["Amulet of Glory"] }], notes: "One of three calquat patches (also Summer Shore, Kastori)." },
+  { id: "calquat_kastori", name: "Kastori", type: "calquat", proximityGroup: "kastori_fruit", region: "Varlamore", routePriority: 12, farmingItems: [{ name: "Calquat sapling", slots: 1 }, { name: "Payment (8 poison ivy berries)", slots: 1 }], teleports: [{ method: "Quetzal Whistle → Kastori (landing site built)", requires: { teleports: ["quetzalWhistle"], unlocks: ["kastoriQuetzal"] }, speed: 1, items: ["Quetzal Whistle"] }, { method: "Quetzal Whistle → Hunter Guild, run SE", requires: { teleports: ["quetzalWhistle"] }, speed: 3, items: ["Quetzal Whistle"] }], requirements: { quests: ["childrenOfTheSun"], unlocks: ["varlamoreAccess"] }, notes: "Req: Children of the Sun." },
+  { id: "seaweed", name: "Underwater Seaweed", type: "seaweed", proximityGroup: "seaweed", region: "Fossil Island", routePriority: 10, farmingItems: [{ name: "Seaweed spore ×2", slots: 1 }], teleports: [{ method: "Digsite Pendant → Fossil Island, row out & dive", requires: { teleports: ["digsitePendant"] }, speed: 2, items: ["Digsite Pendant"] }, { method: "Fairy Ring AKS → Mushroom Forest, run N, row & dive", requires: { teleports: ["fairyRing"] }, speed: 4, items: ["Dramen/Lunar staff"] }], requirements: { quests: ["boneVoyage"], unlocks: ["fossilIsland"] }, notes: "Two patches; not fairy-ring-accessible directly. Bring Fishbowl helmet + Diving apparatus. Req: Bone Voyage." },
   { id: "mushroom", name: "Canifis Mushroom", type: "mushroom", proximityGroup: "mushroom", region: "Morytania", routePriority: 10, farmingItems: [{ name: "Mushroom spore", slots: 1 }], teleports: [{ method: "Fairy Ring CKS, run N", requires: { teleports: ["fairyRing"] }, speed: 2, items: ["Dramen/Lunar staff"] }, { method: "Ectophial, run west", requires: { teleports: ["ectophial"] }, speed: 3, items: ["Ectophial"] }], notes: null },
   { id: "belladonna", name: "Draynor Belladonna", type: "belladonna", proximityGroup: "belladonna", region: "Misthalin", routePriority: 10, farmingItems: [{ name: "Belladonna seed", slots: 1 }], teleports: [{ method: "Glory → Draynor Village", requires: { teleports: ["amuletOfGlory"] }, speed: 1, items: ["Amulet of Glory"] }, { method: "Lumbridge TP, run west", requires: { teleports: ["standardSpellbook"] }, speed: 3, items: ["Law rune", "Air rune", "Earth rune"] }], notes: null },
+  { id: "belladonna_auburnvale", name: "Auburnvale Belladonna", type: "belladonna", proximityGroup: "auburnvale_belladonna", region: "Varlamore", routePriority: 20, farmingItems: [{ name: "Belladonna seed", slots: 1 }], teleports: [{ method: "Fairy Ring AIS, run N", requires: { teleports: ["fairyRing"] }, speed: 2, items: ["Dramen/Lunar staff"] }, { method: "Quetzal Whistle → Civitas illa Fortis, run E", requires: { teleports: ["quetzalWhistle"] }, speed: 4, items: ["Quetzal Whistle"] }], requirements: { unlocks: ["varlamoreAccess"] }, notes: "East end of Auburnvale (Varlamore)." },
 ];
 
 const PATCH_TYPES = [
@@ -458,7 +458,7 @@ const CROPS = {
     { id: "nasturtium", name: "Nasturtium", seed: "Nasturtium seed", lvl: 24 },
     { id: "woad", name: "Woad", seed: "Woad seed", lvl: 25 },
     { id: "limpwurt", name: "Limpwurt", seed: "Limpwurt seed", lvl: 26 },
-    { id: "whileLily", name: "White lily", seed: "White lily seed", lvl: 58 },
+    { id: "whiteLily", name: "White lily", seed: "White lily seed", lvl: 58 },
   ],
   tree: [
     { id: "oak", name: "Oak", seed: "Oak sapling", payment: "Tomatoes(5) ×1", lvl: 15 },
