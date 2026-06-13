@@ -95,7 +95,7 @@ export function generateRoute(selectedTypes, prof, cropSelections) {
   const charterFromCatherbyOk = catherbyIdx !== -1 && brimhavenIdx !== -1 && catherbyIdx < brimhavenIdx;
 
   // Build stops with inventory data using actual crop selections
-  const rawSteps = stops.map((s, i) => {
+  const rawSteps = stops.map((s) => {
     let bestUpgrade = null;
     for (const p of s.patches) {
       const u = getBestUpgrade(p, prof, s.bestSpeed);
