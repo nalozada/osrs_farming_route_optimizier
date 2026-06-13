@@ -521,12 +521,21 @@ const CROPS = {
 const MAX_INVENTORY = 28;
 const ALWAYS_EQUIPPED = 3; // spade, seed dibber, rake (take slots)
 
+// Farming-level gates baked into the boolean Guild "unlock" tiers, so a player
+// who ticks a tier they can't yet reach isn't routed to those patches.
+const UNLOCK_MIN_FARMING = { farmingGuild45: 45, farmingGuild: 65, farmingGuild85: 85 };
+
 function meetsReqs(patch, prof) {
   const r = patch.requirements;
   if (!r) return true;
+  const lvl = prof.farmingLevel || 1;
   if (r.quests) for (const q of r.quests) if (!prof.quests[q]) return false;
   if (r.diaries) for (const [d, t] of Object.entries(r.diaries)) if (DIARY_TIERS.indexOf(prof.diaries[d]||"None") < DIARY_TIERS.indexOf(t)) return false;
-  if (r.unlocks) for (const u of r.unlocks) if (!prof.unlocks[u]) return false;
+  if (r.unlocks) for (const u of r.unlocks) {
+    if (!prof.unlocks[u]) return false;
+    if (UNLOCK_MIN_FARMING[u] && lvl < UNLOCK_MIN_FARMING[u]) return false;
+  }
+  if (r.minFarming && lvl < r.minFarming) return false;
   return true;
 }
 
@@ -543,7 +552,10 @@ function tpMeetsReqs(t, prof) {
 }
 
 function getBestTp(patch, prof) {
-  const avail = patch.teleports.filter(t => tpMeetsReqs(t, prof)).sort((a,b) => a.speed - b.speed);
+  // charterFromCatherby is a conditional method (only valid if Catherby is visited
+  // first); it is handled separately in generateRoute and must never drive the
+  // default best-teleport selection or the route ordering.
+  const avail = patch.teleports.filter(t => tpMeetsReqs(t, prof) && !t.charterFromCatherby).sort((a,b) => a.speed - b.speed);
   return avail[0] || null;
 }
 
@@ -578,13 +590,24 @@ function generateRoute(selectedTypes, prof, cropSelections) {
     if (patch.notes) g.notes.push(patch.notes);
   }
 
+  // Order by teleport speed first; within a speed tier, cluster stops that share
+  // the same primary teleport item so a single inventory load covers more of them
+  // (fewer duplicate teleport-item slots per segment => fewer bank trips). Because
+  // every stop is an independent teleport, this clustering costs no extra travel.
+  const gearKey = g => (g.bestTp.items && g.bestTp.items[0]) || g.bestTp.method;
   const stops = Object.values(groups).filter(g => g.bestTp).sort((a,b) => {
     if (a.bestSpeed !== b.bestSpeed) return a.bestSpeed - b.bestSpeed;
+    const ak = gearKey(a), bk = gearKey(b);
+    if (ak !== bk) return ak < bk ? -1 : 1;
     return a.routePriority - b.routePriority;
   });
 
-  // Check if Catherby is in the route (for charter-from-Catherby logic)
-  const catherbyInRoute = stops.some(s => s.key === "catherby_area");
+  // Charter-from-Catherby only makes sense if Catherby is actually visited BEFORE
+  // Brimhaven in the (speed-sorted) route — otherwise we'd tell the player to
+  // charter "from Catherby" before they've been there.
+  const catherbyIdx = stops.findIndex(s => s.key === "catherby_area");
+  const brimhavenIdx = stops.findIndex(s => s.key === "brimhaven");
+  const charterFromCatherbyOk = catherbyIdx !== -1 && brimhavenIdx !== -1 && catherbyIdx < brimhavenIdx;
 
   // Build stops with inventory data using actual crop selections
   const rawSteps = stops.map((s, i) => {
@@ -594,20 +617,17 @@ function generateRoute(selectedTypes, prof, cropSelections) {
       if (u && (!bestUpgrade || u.speed < bestUpgrade.speed)) bestUpgrade = u;
     }
 
-    // If Brimhaven and Catherby are both in route, prefer charter if it's faster than current best
+    // If Catherby is visited before Brimhaven, the free charter ship from Catherby
+    // is worth surfacing when it's at least as fast as your best usable option.
+    // This only changes the displayed method/speed; Brimhaven keeps its sorted
+    // position (which is already after Catherby), so the "if already there" hint holds.
     let usedTp = s.bestTp;
     let usedSpeed = s.bestSpeed;
-    if (s.key === "brimhaven" && catherbyInRoute) {
+    if (s.key === "brimhaven" && charterFromCatherbyOk) {
       const charterTp = s.patches[0]?.teleports.find(t => t.charterFromCatherby);
-      if (charterTp && (!usedTp || charterTp.speed < usedSpeed || (usedTp && !usedTp.requires?.teleports?.length))) {
-        // Only override if charter is faster or equal to current non-planted option
-        const curNonPlanted = s.patches[0]?.teleports
-          .filter(t => tpMeetsReqs(t, prof) && !t.charterFromCatherby)
-          .sort((a,b) => a.speed - b.speed)[0];
-        if (!curNonPlanted || charterTp.speed <= curNonPlanted.speed) {
-          usedTp = charterTp;
-          usedSpeed = charterTp.speed;
-        }
+      if (charterTp && (!usedTp || charterTp.speed <= usedSpeed)) {
+        usedTp = charterTp;
+        usedSpeed = charterTp.speed;
       }
     }
 
@@ -689,45 +709,35 @@ function generateRoute(selectedTypes, prof, cropSelections) {
     };
   });
 
-  // Insert bank stops based on inventory capacity
-  // ALWAYS start with an initial bank stop
-  const withBanks = [];
-  let currentLoad = ALWAYS_EQUIPPED; // spade, dibber, rake
-  let currentSegmentItems = ["Spade", "Seed dibber", "Rake"];
-  let segmentStops = [];
-
-  // Compute the initial bank stop (what to bring for the first segment)
-  const initialBank = computeBankWithdrawals(rawSteps, 0, []);
-  withBanks.push({
+  // Insert bank stops based on inventory capacity. The model is: at each bank,
+  // deposit everything except the always-carried tools, then withdraw fresh for
+  // the next segment — so each segment is computed from a clean inventory.
+  const initialBank = computeBankWithdrawals(rawSteps, 0);
+  const withBanks = [{
     isBank: true,
     bankCategories: initialBank.categories,
     bankNote: initialBank.note,
     isInitial: true,
-  });
+  }];
 
-  // Track what the initial bank loaded
-  for (const cat of initialBank.categories) {
-    for (const item of cat.items) {
-      currentSegmentItems.push(item);
-    }
-  }
-  currentLoad = initialBank.totalSlots;
-
-  // Now figure out where mid-route banks are needed
-  // We need to re-simulate since initial bank may not cover everything
-  currentLoad = ALWAYS_EQUIPPED;
-  currentSegmentItems = ["Spade", "Seed dibber", "Rake"];
-  segmentStops = [];
-  // Re-insert stops, adding bank stops as needed
+  // Walk the stops, inserting a mid-route bank whenever the next stop won't fit.
+  let currentLoad = ALWAYS_EQUIPPED; // spade, dibber, rake occupy inventory slots
+  let currentSegmentItems = ["Spade", "Seed dibber", "Rake"];
+  let segmentStops = [];
   const stopsOnly = [];
+  const MAX_SEGMENT_SLOTS = MAX_INVENTORY - ALWAYS_EQUIPPED;
 
   for (let i = 0; i < rawSteps.length; i++) {
     const step = rawSteps[i];
     const newTpItems = step.teleportItems.filter(it => !currentSegmentItems.includes(it));
     const stopSlots = newTpItems.length + step.farmingSlots;
+    // Slots this stop needs on its own (fresh inventory) — used to detect a stop
+    // that can't fit in a single trip even after banking.
+    const standaloneSlots = step.teleportItems.length + step.farmingSlots;
+    const overflow = standaloneSlots > MAX_SEGMENT_SLOTS;
 
     if (currentLoad + stopSlots > MAX_INVENTORY && segmentStops.length > 0) {
-      const nextBank = computeBankWithdrawals(rawSteps, i, currentSegmentItems);
+      const nextBank = computeBankWithdrawals(rawSteps, i);
       stopsOnly.push({
         isBank: true,
         bankCategories: nextBank.categories,
@@ -742,7 +752,7 @@ function generateRoute(selectedTypes, prof, cropSelections) {
     currentLoad += stopSlots;
     currentSegmentItems.push(...newTpItems, ...step.farmingItems);
     segmentStops.push(step);
-    stopsOnly.push({ ...step, isBank: false });
+    stopsOnly.push({ ...step, isBank: false, overflow });
   }
 
   // Combine: initial bank + all stops with mid-route banks
@@ -790,7 +800,7 @@ function categorizeItems(items) {
   return Object.values(categories).filter(c => c.items.length > 0);
 }
 
-function computeBankWithdrawals(allSteps, fromIdx, alreadyHave) {
+function computeBankWithdrawals(allSteps, fromIdx) {
   const tpItems = new Set();
   const aggSeeds = {}; // seed name → total qty
   const aggPayments = {}; // payment name → total qty
@@ -828,13 +838,16 @@ function computeBankWithdrawals(allSteps, fromIdx, alreadyHave) {
 
   const categories = categorizeItems(allItems);
 
-  return {
-    categories,
-    totalSlots: slots,
-    note: stopsCount >= allSteps.length - fromIdx
-      ? `Withdraw everything for all ${stopsCount} stops`
-      : `Withdraw items for the next ${stopsCount} stop${stopsCount !== 1 ? "s" : ""}`,
-  };
+  let note;
+  if (stopsCount === 0) {
+    note = "Nothing to withdraw — no reachable stops";
+  } else if (stopsCount >= allSteps.length - fromIdx) {
+    note = `Withdraw everything for all ${stopsCount} stop${stopsCount !== 1 ? "s" : ""}`;
+  } else {
+    note = `Withdraw items for the next ${stopsCount} stop${stopsCount !== 1 ? "s" : ""}`;
+  }
+
+  return { categories, totalSlots: slots, note };
 }
 
 function getAllRouteItems(route) {
@@ -851,9 +864,27 @@ function getAllRouteItems(route) {
 // ═══════════════════════════════════════════════════════════════
 // PROFILE
 // ═══════════════════════════════════════════════════════════════
-// Blank default — user must configure before first run
+const PROFILE_KEY = "osrs_fp_v5";
+
+// Blank default — user must configure before first run. farmingLevel gates which
+// crops can be planted and which Farming Guild tiers are reachable.
 function defaultProfile() {
-  return { quests: {}, diaries: {}, teleports: {}, unlocks: {} };
+  return { quests: {}, diaries: {}, teleports: {}, unlocks: {}, farmingLevel: 1 };
+}
+// Merge a parsed/partial profile over the default so no sub-object is ever
+// undefined. Older or hand-edited localStorage values could omit keys, which
+// previously crashed the engine on first render (e.g. prof.teleports[tp]).
+function normalizeProfile(p) {
+  const d = defaultProfile();
+  if (!p || typeof p !== "object") return d;
+  const lvl = Number(p.farmingLevel);
+  return {
+    quests: { ...d.quests, ...(p.quests || {}) },
+    diaries: { ...d.diaries, ...(p.diaries || {}) },
+    teleports: { ...d.teleports, ...(p.teleports || {}) },
+    unlocks: { ...d.unlocks, ...(p.unlocks || {}) },
+    farmingLevel: Number.isFinite(lvl) ? Math.min(99, Math.max(1, Math.round(lvl))) : d.farmingLevel,
+  };
 }
 function isProfileEmpty(p) {
   return !Object.values(p.quests).some(Boolean) &&
@@ -861,8 +892,13 @@ function isProfileEmpty(p) {
     !Object.values(p.unlocks).some(Boolean) &&
     !Object.values(p.diaries).some(v => v && v !== "None");
 }
-function loadProfile() { try { const s = localStorage.getItem("osrs_fp_v5"); if (s) return JSON.parse(s); } catch(e){} return defaultProfile(); }
-function saveProfile(p) { localStorage.setItem("osrs_fp_v5", JSON.stringify(p)); }
+function loadProfile() {
+  try { const s = localStorage.getItem(PROFILE_KEY); if (s) return normalizeProfile(JSON.parse(s)); } catch (e) { /* corrupt — fall back */ }
+  return defaultProfile();
+}
+function saveProfile(p) {
+  try { localStorage.setItem(PROFILE_KEY, JSON.stringify(p)); return true; } catch (e) { return false; }
+}
 
 // ═══════════════════════════════════════════════════════════════
 // COMPONENTS
