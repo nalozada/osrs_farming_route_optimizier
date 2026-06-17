@@ -152,12 +152,17 @@ function ProfileEditor({ profile, setProfile, onClose, workerUrl, onWorkerUrlCha
         farmingLevel: Number.isFinite(d.farmingLevel) ? d.farmingLevel : p.farmingLevel,
         quests: { ...p.quests, ...(d.quests || {}) },
         diaries: { ...p.diaries, ...(d.diaries || {}) },
+        // Additive: derived teleports/unlocks contain only `true`, so a manual toggle
+        // (e.g. a POH-mounted glory the scan can't see) is never turned off.
+        teleports: { ...p.teleports, ...(d.teleports || {}) },
+        unlocks: { ...p.unlocks, ...(d.unlocks || {}) },
       }));
       onAccountData?.(d);
       const nq = Object.values(d.quests || {}).filter(Boolean).length;
       const nd = Object.values(d.diaries || {}).filter(t => t && t !== "None").length;
-      const ns = Object.values(d.seeds || {}).filter(Boolean).length;
-      setSyncMsg(`✓ Synced — Farming ${d.farmingLevel}, ${nq} quests, ${nd} diaries, seeds for ${ns} patch types. (Teleports/unlocks stay manual.)`);
+      const nt = Object.values(d.teleports || {}).filter(Boolean).length;
+      const nu = Object.values(d.unlocks || {}).filter(Boolean).length;
+      setSyncMsg(`✓ Synced — Farming ${d.farmingLevel}, ${nq} quests, ${nd} diaries, ${nt} teleports, ${nu} unlocks. POH-mounted/stashed teleports can't be detected — keep those on manually.`);
     } catch (e) {
       setSyncMsg("Sync failed: " + e.message + ". Check the Worker URL and that it's deployed.");
     } finally { setSyncBusy(false); }
@@ -278,6 +283,7 @@ function ProfileEditor({ profile, setProfile, onClose, workerUrl, onWorkerUrlCha
               <h3 style={{ margin: 0, color: "#c9a84c", fontSize: 14, textTransform: "uppercase", letterSpacing: 1 }}>Teleports & Transportation</h3>
               <button onClick={allT} style={{ background: "none", border: "1px solid #444", borderRadius: 4, color: "#aaa", fontSize: 11, padding: "3px 10px", cursor: "pointer" }}>{TELEPORTS.every(t => l.teleports[t.id]) ? "Deselect All" : "Select All"}</button>
             </div>
+            <div style={{ fontSize: 11, color: "#8a8a8a", marginBottom: 10, fontStyle: "italic" }}>Account Sync auto-detects most of these. Teleports kept in your POH (e.g. a mounted glory), a STASH unit, or otherwise not in your bank/inventory/equipment can't be detected — toggle those on manually. Planted spirit trees and a few unlocks also stay manual.</div>
             {tpGroups.filter(g => g.ids.length > 0).map(grp => (
               <div key={grp.label} style={{ marginBottom: 12 }}>
                 <div style={{ fontSize: 11, color: "#777", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.5px" }}>{grp.label}</div>
@@ -344,8 +350,9 @@ export default function App() {
   const onAutoSyncChange = v => { setAutoSync(v); saveSync({ workerUrl, autoSync: v }); };
   const onAccountData = d => { setAcct(d); saveAcct(d); };
 
-  // Background sync: merge account facts (Farming level, quests, diaries) into the
-  // saved profile and refresh bank-seed data. Teleports/unlocks stay manual.
+  // Background sync: merge account facts (Farming level, quests, diaries) + detected
+  // teleports/unlocks into the saved profile and refresh bank-seed data. Teleport/unlock
+  // merge is ADDITIVE (derived has only `true` keys) so manual/POH-only toggles survive.
   const applyAccount = useCallback(d => {
     setAcct(d); saveAcct(d);
     setProf(p => {
@@ -354,6 +361,8 @@ export default function App() {
         farmingLevel: Number.isFinite(d.farmingLevel) ? d.farmingLevel : p.farmingLevel,
         quests: { ...p.quests, ...(d.quests || {}) },
         diaries: { ...p.diaries, ...(d.diaries || {}) },
+        teleports: { ...p.teleports, ...(d.teleports || {}) },
+        unlocks: { ...p.unlocks, ...(d.unlocks || {}) },
       });
       saveProfile(merged);
       return merged;

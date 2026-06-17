@@ -82,6 +82,23 @@ describe("App hourly auto-sync", () => {
     expect(global.fetch).not.toHaveBeenCalled();
     expect(JSON.parse(localStorage.getItem("osrs_fp_v5")).farmingLevel).toBe(30);
   });
+
+  it("merges teleports/unlocks ADDITIVELY (manual POH glory is preserved)", async () => {
+    // Profile has a manually-enabled glory (mounted in POH).
+    localStorage.setItem("osrs_fp_v5", JSON.stringify({ quests: {}, diaries: {}, teleports: { amuletOfGlory: true }, unlocks: {}, farmingLevel: 50 }));
+    localStorage.setItem("osrs_sync_v1", JSON.stringify({ workerUrl: "https://w.test", autoSync: true }));
+    global.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ updatedAt: "2026-06-17T00:00:00.000Z", farmingLevel: 80, quests: {}, diaries: {},
+        teleports: { ringOfDueling: true, fairyRing: true }, unlocks: { prifAccess: true }, seeds: {}, ownedSeedNames: [], ownedSeedCounts: {} }),
+    }));
+    render(<App />);
+    await waitFor(() => expect(JSON.parse(localStorage.getItem("osrs_fp_v5")).teleports.ringOfDueling).toBe(true));
+    const prof = JSON.parse(localStorage.getItem("osrs_fp_v5"));
+    expect(prof.teleports.amuletOfGlory).toBe(true); // NOT wiped — additive
+    expect(prof.teleports.fairyRing).toBe(true);
+    expect(prof.unlocks.prifAccess).toBe(true);
+  });
 });
 
 describe("App WiseOldMan level import", () => {
