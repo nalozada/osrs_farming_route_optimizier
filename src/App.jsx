@@ -1,9 +1,33 @@
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
-import { QUESTS, DIARIES, DIARY_TIERS, TELEPORTS, OTHER_UNLOCKS, PATCHES, PATCH_TYPES, CROPS } from "./data.js";
-import { meetsReqs, generateRoute, getAllRouteItems, isProfileEmpty, loadProfile, saveProfile, normalizeProfile, loadSession, saveSession, plantableSeedTypes, loadSync, saveSync, loadAcct, saveAcct, normalizeCropSelections, baseSeedName, allocateCrops } from "./engine.js";
-import { fetchAccountData } from "./sync/client.js";
+import { QUESTS, DIARIES, DIARY_TIERS, TELEPORTS, OTHER_UNLOCKS, PATCHES, PATCH_TYPES, CROPS, SYNC_UNDETECTABLE_TELEPORTS, SYNC_UNDETECTABLE_UNLOCKS, SYNC_OFTEN_MISSED_TELEPORTS } from "./data.js";
+import { meetsReqs, generateRoute, getAllRouteItems, isProfileEmpty, defaultProfile, saveProfile, normalizeProfile, loadSession, saveSession, plantableSeedTypes, loadSync, saveSync, loadAcct, saveAcct, normalizeCropSelections, baseSeedName, allocateCrops, resolveWorkerUrl, loadMembers, saveMembers, loadProfiles, saveProfiles, MANUAL_KEY } from "./engine.js";
+import { fetchMembers } from "./sync/client.js";
 
 const AUTO_SYNC_MS = 60 * 60 * 1000; // hourly
+
+// Build the "we synced N, here's what we couldn't see" summary line shown after a sync.
+function syncSummary(name, data, memberCount) {
+  if (!data) return "";
+  const nq = Object.values(data.quests || {}).filter(Boolean).length;
+  const nd = Object.values(data.diaries || {}).filter(t => t && t !== "None").length;
+  const nt = Object.values(data.teleports || {}).filter(Boolean).length;
+  const nu = Object.values(data.unlocks || {}).filter(Boolean).length;
+  const more = memberCount > 1 ? ` · ${memberCount} members available` : "";
+  return `✓ Synced ${name} — Farming ${data.farmingLevel}, ${nq} quests, ${nd} diaries, ${nt} teleports, ${nu} unlocks.${more}`;
+}
+
+// Relative "x ago" for the last-sync timestamp.
+function timeAgo(iso) {
+  if (!iso) return "";
+  const ms = Date.now() - Date.parse(iso);
+  if (!Number.isFinite(ms) || ms < 0) return "";
+  const m = Math.round(ms / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.round(h / 24)}d ago`;
+}
 
 // ═══════════════════════════════════════════════════════════════
 // COMPONENTS
@@ -131,8 +155,82 @@ const RouteStep = memo(function RouteStep({ step, checked, onToggle }) {
   );
 });
 
-function ProfileEditor({ profile, setProfile, onClose, workerUrl, onWorkerUrlChange, acct, onAccountData, autoSync, onAutoSyncChange }) {
+// Pick which GIM member you are. Switching is instant (all members' derived data is
+// already cached from the last sync) and persists across reloads.
+function MemberPicker({ members, selected, defaultPlayer, onSelect, onSync, syncing, updatedAt, compact, label }) {
+  if (!members || members.length === 0) {
+    return (
+      <button onClick={onSync} disabled={syncing} style={{ background: "#1e1e1e", border: "1px solid #2a4a32", color: "#7bd88f", padding: "8px 14px", borderRadius: 8, cursor: syncing ? "wait" : "pointer", fontSize: 13 }}>
+        {syncing ? "Syncing…" : "↻ Sync GIM account"}
+      </button>
+    );
+  }
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+      <label style={{ fontSize: 12, color: "#8a8a8a", display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ color: "#7bd88f", fontWeight: 600 }}>👤 You are</span>
+        <select value={selected || ""} onChange={e => onSelect(e.target.value)} aria-label={label || "Which GIM member are you"}
+          style={{ background: "#111", color: "#cde", border: "1px solid #2a4a32", borderRadius: 6, padding: "6px 8px", fontSize: 13 }}>
+          {!selected && <option value="">Select your character…</option>}
+          {members.map(m => <option key={m.name} value={m.name}>{m.name}{m.name === defaultPlayer ? " ★" : ""}</option>)}
+        </select>
+      </label>
+      <button onClick={onSync} disabled={syncing} title="Re-sync from the tracker" style={{ background: "none", border: "1px solid #333", color: "#aaa", padding: "6px 10px", borderRadius: 6, cursor: syncing ? "wait" : "pointer", fontSize: 12 }}>
+        {syncing ? "Syncing…" : "↻ Sync"}
+      </button>
+      {!compact && updatedAt && <span style={{ fontSize: 11, color: "#667" }}>synced {timeAgo(updatedAt)}</span>}
+    </div>
+  );
+}
+
+// The few toggles Account Sync can't reliably set (planted spirit trees, Arceuus, the
+// Kastori site, Fire of Nourishment) plus jewellery teleports that weren't detected
+// this sync (commonly POH-mounted / kept in a STASH unit). Surfaced as one-tap chips so
+// you never have to scroll the full teleport list to finish your setup.
+function ManualVerifyPanel({ teleports, unlocks, onToggleTeleport, onToggleUnlock, style }) {
+  const tps = [
+    ...SYNC_UNDETECTABLE_TELEPORTS,
+    ...SYNC_OFTEN_MISSED_TELEPORTS.filter(id => !teleports[id]),
+  ].map(id => TELEPORTS.find(t => t.id === id)).filter(Boolean);
+  const uls = SYNC_UNDETECTABLE_UNLOCKS.map(id => OTHER_UNLOCKS.find(u => u.id === id)).filter(Boolean);
+  if (!tps.length && !uls.length) return null;
+
+  const chip = (on, label, onClick, key) => (
+    <button key={key} onClick={onClick} aria-pressed={on} style={{
+      display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 10px", borderRadius: 16,
+      fontSize: 12, fontFamily: "'Crimson Text', serif", cursor: "pointer",
+      background: on ? "#1a2a1a" : "#161616",
+      border: `1px solid ${on ? "#3a7a3a" : "#3a3a3a"}`,
+      color: on ? "#a5d6a7" : "#bbb",
+    }}>
+      <span style={{ fontSize: 11 }}>{on ? "✓" : "+"}</span>{label}
+    </button>
+  );
+
+  return (
+    <div style={{ padding: 14, borderRadius: 10, background: "#1c1a12", border: "1px solid #4a3a18", ...style }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+        <span style={{ fontSize: 14 }}>👁️‍🗨️</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: "#e0c97f" }}>Can&apos;t auto-detect these — tap any you have</span>
+      </div>
+      <div style={{ fontSize: 11, color: "#9a8a5a", marginBottom: 10 }}>
+        Sync fills everything it can see. These are kept in your POH / a STASH unit, or have no detectable signal — confirm them here instead of scrolling the full list.
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {tps.map(t => chip(!!teleports[t.id], t.name, () => onToggleTeleport(t.id), "t-" + t.id))}
+        {uls.map(u => chip(!!unlocks[u.id], u.name, () => onToggleUnlock(u.id), "u-" + u.id))}
+      </div>
+    </div>
+  );
+}
+
+function ProfileEditor({ profile, setProfile, onClose, workerUrl, onWorkerUrlChange, autoSync, onAutoSyncChange, members, selectedMember, defaultPlayer, updatedAt, onSelectMember, onManualSync }) {
   const [l, setL] = useState(() => normalizeProfile(JSON.parse(JSON.stringify(profile))));
+  // Remember the profile snapshot l was seeded from so we can adopt a fresher one (an
+  // in-flight/background sync, or a member switch) WITHOUT discarding edits in progress.
+  const seededRef = useRef(null);
+  if (seededRef.current === null) seededRef.current = JSON.stringify(l);
+  const reseed = useCallback(p => { const n = normalizeProfile(p); seededRef.current = JSON.stringify(n); setL(n); }, []);
   const cardRef = useRef(null);
   const [syncBusy, setSyncBusy] = useState(false);
   const [syncMsg, setSyncMsg] = useState("");
@@ -142,33 +240,26 @@ function ProfileEditor({ profile, setProfile, onClose, workerUrl, onWorkerUrlCha
   const tT = id => setL(p => ({ ...p, teleports: { ...p.teleports, [id]: !p.teleports[id] } }));
   const tU = id => setL(p => ({ ...p, unlocks: { ...p.unlocks, [id]: !p.unlocks[id] } }));
   const sLvl = v => setL(p => ({ ...p, farmingLevel: Math.min(99, Math.max(1, Math.round(Number(v) || 1))) }));
-  const save = () => { const ok = saveProfile(l); setProfile(l); if (!ok) alert("Couldn't save to browser storage (private mode or full). Your changes apply for this session only."); onClose(); };
+  const save = () => { setProfile(l); onClose(); };
 
-  // Pull Farming level + quests + diaries + bank-seed data from the GIM Worker.
+  // Re-sync the selected member from the GIM Worker (app handles the per-member merge);
+  // refresh the editor's working copy from the freshly-merged active profile.
   const doGimSync = async () => {
-    if (!workerUrl) { setSyncMsg("Enter your Worker URL first (see worker/README.md)."); return; }
     setSyncBusy(true); setSyncMsg("Syncing…");
     try {
-      const d = await fetchAccountData(workerUrl);
-      setL(p => normalizeProfile({
-        ...p,
-        farmingLevel: Number.isFinite(d.farmingLevel) ? d.farmingLevel : p.farmingLevel,
-        quests: { ...p.quests, ...(d.quests || {}) },
-        diaries: { ...p.diaries, ...(d.diaries || {}) },
-        // Additive: derived teleports/unlocks contain only `true`, so a manual toggle
-        // (e.g. a POH-mounted glory the scan can't see) is never turned off.
-        teleports: { ...p.teleports, ...(d.teleports || {}) },
-        unlocks: { ...p.unlocks, ...(d.unlocks || {}) },
-      }));
-      onAccountData?.(d);
-      const nq = Object.values(d.quests || {}).filter(Boolean).length;
-      const nd = Object.values(d.diaries || {}).filter(t => t && t !== "None").length;
-      const nt = Object.values(d.teleports || {}).filter(Boolean).length;
-      const nu = Object.values(d.unlocks || {}).filter(Boolean).length;
-      setSyncMsg(`✓ Synced — Farming ${d.farmingLevel}, ${nq} quests, ${nd} diaries, ${nt} teleports, ${nu} unlocks. POH-mounted/stashed teleports can't be detected — keep those on manually.`);
+      const { profile: synced, message } = await onManualSync();
+      if (synced) reseed(synced);
+      setSyncMsg(message || "✓ Synced.");
     } catch (e) {
       setSyncMsg("Sync failed: " + e.message + ". Check the Worker URL and that it's deployed.");
     } finally { setSyncBusy(false); }
+  };
+
+  // Switch members from inside the editor: applies that member's synced data and
+  // loads their saved profile into the working copy.
+  const pickMember = name => {
+    const next = onSelectMember(name);
+    if (next) reseed(next);
   };
 
   // Fallback: set just Farming level from a username via WiseOldMan (no setup, CORS-ok).
@@ -196,6 +287,14 @@ function ProfileEditor({ profile, setProfile, onClose, workerUrl, onWorkerUrlCha
     cardRef.current?.focus();
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  // If the active profile advances underneath the open editor (a background/in-flight
+  // sync or a member switch) AND the user hasn't started editing this snapshot, adopt
+  // the fresh data — otherwise Save would write the stale snapshot and revert it.
+  useEffect(() => {
+    if (JSON.stringify(l) === seededRef.current) reseed(profile);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile]);
   const allQ = () => { const on = QUESTS.every(q => l.quests[q.id]); const u = {}; QUESTS.forEach(q => u[q.id] = !on); setL(p => ({ ...p, quests: { ...p.quests, ...u } })); };
   const allT = () => { const on = TELEPORTS.every(t => l.teleports[t.id]); const u = {}; TELEPORTS.forEach(t => u[t.id] = !on); setL(p => ({ ...p, teleports: { ...p.teleports, ...u } })); };
 
@@ -222,37 +321,42 @@ function ProfileEditor({ profile, setProfile, onClose, workerUrl, onWorkerUrlCha
           <div style={{ marginBottom: 24, padding: 14, borderRadius: 8, background: "#15201a", border: "1px solid #234a2a" }}>
             <h3 style={{ margin: "0 0 4px", color: "#7bd88f", fontSize: 14, textTransform: "uppercase", letterSpacing: 1 }}>Account Sync</h3>
             <p style={{ margin: "0 0 10px", color: "#8a8a8a", fontSize: 11 }}>
-              Auto-fill Farming level, quests &amp; diaries — and tell the optimizer which seeds you own — from your Group Ironman tracker. Needs the Cloudflare Worker from <code style={{ color: "#9a9a9a" }}>worker/README.md</code> (your token stays private).
+              Pick your character to auto-fill Farming level, quests, diaries, teleports &amp; the seeds you own from the Group Ironman tracker. This is always on — no setup needed.
             </p>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-              <input
-                type="url" value={workerUrl || ""} placeholder="https://…workers.dev"
-                onChange={e => onWorkerUrlChange?.(e.target.value)}
-                aria-label="GIM Worker URL"
-                style={{ flex: "1 1 240px", minWidth: 0, background: "#111", color: "#cde", border: "1px solid #2a4a32", borderRadius: 6, padding: "8px 10px", fontSize: 13 }}
-              />
-              <button onClick={doGimSync} disabled={syncBusy} style={{ background: syncBusy ? "#2a3a2a" : "linear-gradient(135deg, #4a8844, #2a5528)", border: "none", color: "#eafae6", padding: "8px 16px", borderRadius: 6, cursor: syncBusy ? "wait" : "pointer", fontSize: 13, fontWeight: 700 }}>
-                {syncBusy ? "Working…" : "Sync from my GIM account"}
-              </button>
-            </div>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, fontSize: 12, color: "#9bb59f", cursor: "pointer" }}>
-              <input type="checkbox" checked={!!autoSync} onChange={e => onAutoSyncChange?.(e.target.checked)} style={{ accentColor: "#4a8844" }} />
-              Auto-sync hourly (and on open) while the app is open — Farming level, quests, diaries &amp; bank seeds stay current. Manual sync still works anytime.
-            </label>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 8 }}>
-              <input
-                type="text" value={rsn} placeholder="OSRS username (Farming level only)"
-                onChange={e => setRsn(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter") doWomLevel(); }}
-                aria-label="OSRS username for WiseOldMan level lookup"
-                style={{ flex: "1 1 240px", minWidth: 0, background: "#111", color: "#cde", border: "1px solid #333", borderRadius: 6, padding: "8px 10px", fontSize: 13 }}
-              />
-              <button onClick={doWomLevel} disabled={syncBusy} style={{ background: "#222", border: "1px solid #444", color: "#bbb", padding: "8px 16px", borderRadius: 6, cursor: syncBusy ? "wait" : "pointer", fontSize: 13 }}>
-                Fill level from username
-              </button>
+              <MemberPicker members={members} selected={selectedMember} defaultPlayer={defaultPlayer} onSelect={pickMember} onSync={doGimSync} syncing={syncBusy} updatedAt={updatedAt} label="Active GIM member (profile editor)" />
             </div>
             {syncMsg && <div style={{ marginTop: 8, fontSize: 12, color: syncMsg.startsWith("✓") ? "#7bd88f" : syncMsg.includes("fail") || syncMsg.includes("Enter") ? "#e0a050" : "#8a8a8a" }}>{syncMsg}</div>}
-            {acct?.updatedAt && <div style={{ marginTop: 6, fontSize: 11, color: "#667" }}>Bank/account data last synced: {new Date(acct.updatedAt).toLocaleString()}</div>}
+            <div style={{ marginTop: 12 }}>
+              <ManualVerifyPanel teleports={l.teleports} unlocks={l.unlocks} onToggleTeleport={tT} onToggleUnlock={tU} />
+            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, fontSize: 12, color: "#9bb59f", cursor: "pointer" }}>
+              <input type="checkbox" checked={!!autoSync} onChange={e => onAutoSyncChange?.(e.target.checked)} style={{ accentColor: "#4a8844" }} />
+              Auto-sync hourly (and on open) while the app is open. Manual sync still works anytime.
+            </label>
+            {/* Advanced: WiseOldMan level-only fallback + self-host Worker override */}
+            <details style={{ marginTop: 10 }}>
+              <summary style={{ fontSize: 11, color: "#778", cursor: "pointer" }}>Advanced</summary>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 8 }}>
+                <input
+                  type="text" value={rsn} placeholder="OSRS username (Farming level only)"
+                  onChange={e => setRsn(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") doWomLevel(); }}
+                  aria-label="OSRS username for WiseOldMan level lookup"
+                  style={{ flex: "1 1 240px", minWidth: 0, background: "#111", color: "#cde", border: "1px solid #333", borderRadius: 6, padding: "8px 10px", fontSize: 13 }}
+                />
+                <button onClick={doWomLevel} disabled={syncBusy} style={{ background: "#222", border: "1px solid #444", color: "#bbb", padding: "8px 16px", borderRadius: 6, cursor: syncBusy ? "wait" : "pointer", fontSize: 13 }}>
+                  Fill level from username
+                </button>
+              </div>
+              <input
+                type="url" value={workerUrl || ""} placeholder="Custom Worker URL (defaults to the shared one)"
+                onChange={e => onWorkerUrlChange?.(e.target.value)}
+                aria-label="Custom GIM Worker URL"
+                style={{ width: "100%", marginTop: 8, background: "#111", color: "#9ab", border: "1px solid #2a3a2a", borderRadius: 6, padding: "8px 10px", fontSize: 12 }}
+              />
+            </details>
+            {updatedAt && <div style={{ marginTop: 8, fontSize: 11, color: "#667" }}>Account data last synced: {new Date(updatedAt).toLocaleString()}</div>}
           </div>
           {/* Farming level */}
           <div style={{ marginBottom: 24 }}>
@@ -331,7 +435,6 @@ export default function App() {
   if (restoredRef.current === null) restoredRef.current = loadSession();
   const restored = restoredRef.current;
 
-  const [prof, setProf] = useState(loadProfile);
   const [showProf, setShowProf] = useState(false);
   const [selTypes, setSelTypes] = useState(() => restored.selTypes || ["herb"]);
   const [route, setRoute] = useState(() => restored.route || null);
@@ -345,45 +448,154 @@ export default function App() {
     saveSession({ selTypes, cropSelections, route, checked, showRoute, showCropSelect });
   }, [selTypes, cropSelections, route, checked, showRoute, showCropSelect]);
 
-  // Account sync (GIM Worker URL + last synced AccountData for bank-aware gating).
-  const [workerUrl, setWorkerUrl] = useState(() => loadSync().workerUrl || "");
-  const [autoSync, setAutoSync] = useState(() => loadSync().autoSync !== false); // default on
-  const [acct, setAcct] = useState(loadAcct);
-  const onWorkerUrlChange = u => { setWorkerUrl(u); saveSync({ workerUrl: u, autoSync }); };
-  const onAutoSyncChange = v => { setAutoSync(v); saveSync({ workerUrl, autoSync: v }); };
-  const onAccountData = d => { setAcct(d); saveAcct(d); };
+  // ── Account sync settings (Worker URL is baked in; the member you pick persists) ──
+  const initSyncRef = useRef(null);
+  if (initSyncRef.current === null) initSyncRef.current = loadSync();
+  const [workerUrl, setWorkerUrl] = useState(() => initSyncRef.current.workerUrl || "");
+  const [autoSync, setAutoSync] = useState(() => initSyncRef.current.autoSync !== false); // default on
+  const [selectedMember, setSelectedMember] = useState(() => initSyncRef.current.selectedMember || "");
+  const effectiveWorkerUrl = useMemo(() => resolveWorkerUrl({ workerUrl }), [workerUrl]);
 
-  // Background sync: merge account facts (Farming level, quests, diaries) + detected
-  // teleports/unlocks into the saved profile and refresh bank-seed data. Teleport/unlock
-  // merge is ADDITIVE (derived has only `true` keys) so manual/POH-only toggles survive.
-  const applyAccount = useCallback(d => {
-    setAcct(d); saveAcct(d);
-    setProf(p => {
-      const merged = normalizeProfile({
-        ...p,
-        farmingLevel: Number.isFinite(d.farmingLevel) ? d.farmingLevel : p.farmingLevel,
-        quests: { ...p.quests, ...(d.quests || {}) },
-        diaries: { ...p.diaries, ...(d.diaries || {}) },
-        teleports: { ...p.teleports, ...(d.teleports || {}) },
-        unlocks: { ...p.unlocks, ...(d.unlocks || {}) },
-      });
-      saveProfile(merged);
-      return merged;
+  // ── Cached member list from the last sync (so reload can switch without re-fetching) ──
+  const initMembersRef = useRef(null);
+  if (initMembersRef.current === null) initMembersRef.current = loadMembers();
+  const [membersMeta, setMembersMeta] = useState(() => initMembersRef.current);
+  const members = membersMeta.members;
+  const defaultPlayer = membersMeta.defaultPlayer || "";
+
+  // ── Per-member profiles (active one mirrored to PROFILE_KEY/ACCT_KEY for back-compat) ──
+  const [profiles, setProfiles] = useState(loadProfiles);
+  const memberKey = selectedMember || MANUAL_KEY;
+  const prof = useMemo(() => normalizeProfile(profiles[memberKey] || defaultProfile()), [profiles, memberKey]);
+
+  // The active member's synced AccountData drives bank-aware gating / owned seeds.
+  // Manual mode (no member picked) falls back to the legacy single AccountData.
+  const legacyAcctRef = useRef(null);
+  if (legacyAcctRef.current === null) legacyAcctRef.current = loadAcct();
+  const acct = useMemo(() => {
+    if (selectedMember) return members.find(m => m.name === selectedMember) || null;
+    return legacyAcctRef.current;
+  }, [members, selectedMember]);
+  const lastSyncedAt = membersMeta.updatedAt || (acct && acct.updatedAt) || null;
+
+  // Refs of fast-moving state for use inside async sync / interval callbacks.
+  const profilesRef = useRef(profiles); useEffect(() => { profilesRef.current = profiles; }, [profiles]);
+  const membersMetaRef = useRef(membersMeta); useEffect(() => { membersMetaRef.current = membersMeta; }, [membersMeta]);
+  const selectedMemberRef = useRef(selectedMember); useEffect(() => { selectedMemberRef.current = selectedMember; }, [selectedMember]);
+  const settingsRef = useRef({ workerUrl, autoSync, selectedMember });
+  useEffect(() => { settingsRef.current = { workerUrl, autoSync, selectedMember }; }, [workerUrl, autoSync, selectedMember]);
+  const showProfRef = useRef(showProf); useEffect(() => { showProfRef.current = showProf; }, [showProf]);
+  const persistSync = useCallback(patch => { saveSync({ ...settingsRef.current, ...patch }); }, []);
+
+  const onWorkerUrlChange = u => { setWorkerUrl(u); persistSync({ workerUrl: u }); };
+  const onAutoSyncChange = v => { setAutoSync(v); persistSync({ autoSync: v }); };
+
+  // Mirror the active member's AccountData to the legacy ACCT_KEY for back-compat.
+  useEffect(() => { if (acct) saveAcct(acct); }, [acct]);
+
+  // Write the active profile to the profiles map + mirror to PROFILE_KEY.
+  const setProf = useCallback(updater => {
+    setProfiles(prev => {
+      const cur = normalizeProfile(prev[memberKey] || defaultProfile());
+      const next = normalizeProfile(typeof updater === "function" ? updater(cur) : updater);
+      const map = { ...prev, [memberKey]: next };
+      profilesRef.current = map;
+      saveProfiles(map); saveProfile(next);
+      return map;
     });
+  }, [memberKey]);
+  const toggleTeleport = id => setProf(p => ({ ...p, teleports: { ...p.teleports, [id]: !p.teleports[id] } }));
+  const toggleUnlock = id => setProf(p => ({ ...p, unlocks: { ...p.unlocks, [id]: !p.unlocks[id] } }));
+
+  // Merge one member's synced AccountData into their profile and return the result.
+  // farmingLevel/quests/diaries are definitive; teleports/unlocks are ADDITIVE (the
+  // derivers emit only `true`) so manual/POH-only toggles are never wiped. Only the one
+  // `ownerName` member inherits the migrated manual profile — never every member.
+  const applyMemberData = useCallback((memberName, data, ownerName) => {
+    const prev = profilesRef.current;
+    let base;
+    if (prev[memberName]) base = normalizeProfile(prev[memberName]);
+    else {
+      const manual = normalizeProfile(prev[MANUAL_KEY] || defaultProfile());
+      const owner = !!ownerName && memberName === ownerName;
+      base = (owner && !isProfileEmpty(manual)) ? manual : defaultProfile();
+    }
+    const merged = normalizeProfile({
+      ...base,
+      farmingLevel: Number.isFinite(data.farmingLevel) ? data.farmingLevel : base.farmingLevel,
+      quests: { ...base.quests, ...(data.quests || {}) },
+      diaries: { ...base.diaries, ...(data.diaries || {}) },
+      teleports: { ...base.teleports, ...(data.teleports || {}) },
+      unlocks: { ...base.unlocks, ...(data.unlocks || {}) },
+    });
+    const map = { ...prev, [memberName]: merged };
+    profilesRef.current = map;
+    saveProfiles(map); saveProfile(merged);
+    setProfiles(map);
+    return merged;
   }, []);
+
+  // The single member allowed to inherit the migrated manual profile: the default
+  // player, or the first member when the Worker named none. Never falsy-for-everyone.
+  const ownerNameOf = meta => meta.defaultPlayer || (meta.members[0] && meta.members[0].name) || "";
+
+  // Pick which member you are: apply their cached synced data + load their profile.
+  const onSelectMember = useCallback(name => {
+    const meta = membersMetaRef.current;
+    const data = meta.members.find(m => m.name === name);
+    setSelectedMember(name); selectedMemberRef.current = name;
+    persistSync({ selectedMember: name });
+    if (data) return applyMemberData(name, data, ownerNameOf(meta));
+    return normalizeProfile(profilesRef.current[name] || defaultProfile());
+  }, [applyMemberData, persistSync]);
+
+  // Fetch every member from the Worker, choose the active one, merge their data.
+  const syncNow = useCallback(async () => {
+    const res = await fetchMembers(effectiveWorkerUrl);
+    const meta = { updatedAt: res.updatedAt, defaultPlayer: res.defaultPlayer, members: res.members };
+    membersMetaRef.current = meta;
+    saveMembers(meta); setMembersMeta(meta);
+    const cur = selectedMemberRef.current;
+    const stillValid = cur && res.members.some(m => m.name === cur);
+    const chosen = stillValid ? cur
+      : (res.members.find(m => m.name === res.defaultPlayer)?.name || (res.members[0] && res.members[0].name) || "");
+    if (chosen !== cur) { setSelectedMember(chosen); selectedMemberRef.current = chosen; persistSync({ selectedMember: chosen }); }
+    const data = res.members.find(m => m.name === chosen) || null;
+    const profile = data ? applyMemberData(chosen, data, ownerNameOf(meta)) : null;
+    return { profile, message: syncSummary(chosen, data, res.members.length), count: res.members.length };
+  }, [effectiveWorkerUrl, applyMemberData, persistSync]);
+  const syncNowRef = useRef(syncNow); useEffect(() => { syncNowRef.current = syncNow; }, [syncNow]);
+
+  // One busy flag shared by manual + auto sync; a counter keeps it accurate if they overlap.
+  const [syncing, setSyncing] = useState(false);
+  const syncCountRef = useRef(0);
+  const beginSync = useCallback(() => { syncCountRef.current += 1; setSyncing(true); }, []);
+  const endSync = useCallback(() => { syncCountRef.current = Math.max(0, syncCountRef.current - 1); if (syncCountRef.current === 0) setSyncing(false); }, []);
+  const manualSync = useCallback(async () => {
+    beginSync();
+    try { return await syncNowRef.current(); }
+    finally { endSync(); }
+  }, [beginSync, endSync]);
 
   // Auto-sync: on open if stale, then hourly while the tab is open.
   useEffect(() => {
-    if (!workerUrl || !autoSync) return;
-    let cancelled = false;
-    const doSync = () => fetchAccountData(workerUrl).then(d => { if (!cancelled) applyAccount(d); }).catch(() => {});
-    const last = acct && acct.updatedAt ? Date.parse(acct.updatedAt) : 0;
-    if (!last || Date.now() - last > AUTO_SYNC_MS) doSync();
-    const id = setInterval(doSync, AUTO_SYNC_MS);
-    return () => { cancelled = true; clearInterval(id); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workerUrl, autoSync]);
-  // Owned seed names + counts from the last sync (null => no bank data).
+    if (!autoSync) return;
+    const tick = () => {
+      // Don't yank data out from under an open editor, and don't pile onto an in-flight sync.
+      if (showProfRef.current || syncCountRef.current > 0) return;
+      beginSync(); syncNowRef.current().catch(() => {}).finally(endSync);
+    };
+    // Gate on the MEMBERS cache freshness (what actually drives the picker); an empty
+    // member list always counts as stale so upgraders fetch on open even when a recent
+    // legacy AccountData timestamp exists.
+    const meta = membersMetaRef.current;
+    const last = (meta.members && meta.members.length && meta.updatedAt) ? Date.parse(meta.updatedAt) : 0;
+    if (!last || Number.isNaN(last) || Date.now() - last > AUTO_SYNC_MS) tick();
+    const id = setInterval(tick, AUTO_SYNC_MS);
+    return () => clearInterval(id);
+  }, [autoSync, effectiveWorkerUrl, beginSync, endSync]);
+
+  // Owned seed names + counts from the active member (null => no bank data).
   const ownedSeeds = acct && Array.isArray(acct.ownedSeedNames) ? acct.ownedSeedNames : null;
   const ownedSeedCounts = acct && acct.ownedSeedCounts ? acct.ownedSeedCounts : null;
   const ownedSeedSet = useMemo(() => new Set((ownedSeeds || []).map(baseSeedName)), [acct]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -506,6 +718,17 @@ export default function App() {
       <main style={{ maxWidth: 800, margin: "0 auto", padding: "24px 16px" }}>
         {!showRoute && !showCropSelect ? (
           <>
+            {/* Account sync: pick which GIM member you are + confirm what we can't detect */}
+            <div style={{ marginBottom: 20, padding: 14, borderRadius: 12, background: "#15201a", border: "1px solid #234a2a" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                <MemberPicker members={members} selected={selectedMember} defaultPlayer={defaultPlayer} onSelect={onSelectMember} onSync={manualSync} syncing={syncing} updatedAt={lastSyncedAt} />
+                {members.length === 0 && <span style={{ fontSize: 11, color: "#778" }}>Auto-syncs your GIM — pick your character once it loads.</span>}
+              </div>
+              {acct && (
+                <ManualVerifyPanel style={{ marginTop: 12 }} teleports={prof.teleports} unlocks={prof.unlocks} onToggleTeleport={toggleTeleport} onToggleUnlock={toggleUnlock} />
+              )}
+            </div>
+
             {/* Profile setup banner */}
             {isProfileEmpty(prof) && (
               <div role="button" tabIndex={0} onClick={() => setShowProf(true)} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowProf(true); } }} style={{
@@ -747,7 +970,7 @@ export default function App() {
         )}
       </main>
 
-      {showProf && <ProfileEditor profile={prof} setProfile={handleSave} onClose={() => setShowProf(false)} workerUrl={workerUrl} onWorkerUrlChange={onWorkerUrlChange} acct={acct} onAccountData={onAccountData} autoSync={autoSync} onAutoSyncChange={onAutoSyncChange} />}
+      {showProf && <ProfileEditor profile={prof} setProfile={handleSave} onClose={() => setShowProf(false)} workerUrl={workerUrl} onWorkerUrlChange={onWorkerUrlChange} autoSync={autoSync} onAutoSyncChange={onAutoSyncChange} members={members} selectedMember={selectedMember} defaultPlayer={defaultPlayer} updatedAt={lastSyncedAt} onSelectMember={onSelectMember} onManualSync={manualSync} />}
     </div>
   );
 }
