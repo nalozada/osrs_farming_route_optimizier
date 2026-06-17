@@ -25,4 +25,9 @@ export default [
     files: ["**/*.test.{js,jsx}"],
     languageOptions: { globals: { ...globals.node } },
   },
+  {
+    // Node-run build scripts (not bundled into the client).
+    files: ["scripts/**/*.{js,mjs}"],
+    languageOptions: { globals: { ...globals.node } },
+  },
 ];
