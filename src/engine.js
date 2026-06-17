@@ -256,6 +256,20 @@ export function generateRoute(selectedTypes, prof, cropSelections) {
 }
 
 // Item categorization for bank stops
+// Display helper: collapse "Law rune" / "Law rune ×2" into a single pluralized
+// "Law runes" (drop amounts, dedupe). Leaves spellbook bundles like "Runes (Lunar)"
+// and non-rune items untouched.
+export function consolidateRunes(items) {
+  const seen = new Set();
+  const out = [];
+  for (const item of items) {
+    const m = typeof item === "string" ? item.match(/^(.*\brune)s?(?:\s*[×x]\s*\d+)?$/i) : null;
+    const name = m ? `${m[1]}s` : item;
+    if (!seen.has(name)) { seen.add(name); out.push(name); }
+  }
+  return out;
+}
+
 export function categorizeItems(items) {
   const categories = {
     teleport: { label: "🧭 Teleport Equipment", color: "#c9a84c", bg: "#2a2510", border: "#4a3f20", items: [] },
@@ -286,6 +300,7 @@ export function categorizeItems(items) {
     }
   }
 
+  categories.runes.items = consolidateRunes(categories.runes.items);
   return Object.values(categories).filter(c => c.items.length > 0);
 }
 
@@ -347,7 +362,8 @@ export function getAllRouteItems(route) {
     (s.teleportItems||[]).forEach(it => equip.add(it));
     (s.farmingItems||[]).forEach(it => farming.add(it));
   }
-  return { equipment: [...equip].sort(), farming: [...farming].sort() };
+  // Consolidate runes ("Law rune", "Law rune ×2" -> "Law runes") in the overview too.
+  return { equipment: consolidateRunes([...equip]).sort(), farming: [...farming].sort() };
 }
 
 // ═══════════════════════════════════════════════════════════════
