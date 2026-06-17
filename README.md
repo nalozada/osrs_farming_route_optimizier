@@ -45,6 +45,11 @@ By default you enter your profile by hand. You can instead pull it automatically
   level from [WiseOldMan](https://wiseoldman.net) (no quests/diaries; no public API exposes
   those by username, which is why full sync needs the tracker).
 
+Once a Worker URL is set, the app **auto-syncs on open (if your data is stale) and hourly
+while it's open** — so your Farming level, quests, diaries and bank seeds stay current
+without clicking. You can toggle this off in **Account Sync** and still sync manually.
+(Teleports/unlocks are never auto-changed — they stay your manual settings.)
+
 When bank data is loaded, patch types you can't plant (no owned seed at your Farming level)
 are greyed out and skipped, with a note saying why. With no sync configured, the app behaves
 exactly as the manual version.

@@ -58,6 +58,32 @@ describe("App bank-aware gating", () => {
   });
 });
 
+describe("App hourly auto-sync", () => {
+  it("auto-syncs on open (when enabled + stale) and merges account facts into the profile", async () => {
+    setProfile({ farmingLevel: 30 });
+    localStorage.setItem("osrs_sync_v1", JSON.stringify({ workerUrl: "https://w.test", autoSync: true }));
+    global.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ updatedAt: "2026-06-17T00:00:00.000Z", farmingLevel: 80, quests: { myArm: true }, diaries: { falador: "Hard" }, seeds: { herb: true }, ownedSeedNames: ["Ranarr seed"] }),
+    }));
+    render(<App />);
+    await waitFor(() => expect(JSON.parse(localStorage.getItem("osrs_fp_v5")).farmingLevel).toBe(80));
+    expect(global.fetch).toHaveBeenCalledWith("https://w.test", { cache: "no-store" });
+    // bank data cached for gating
+    expect(JSON.parse(localStorage.getItem("osrs_acct_v1")).ownedSeedNames).toContain("Ranarr seed");
+  });
+
+  it("does NOT auto-sync when the toggle is off", async () => {
+    setProfile({ farmingLevel: 30 });
+    localStorage.setItem("osrs_sync_v1", JSON.stringify({ workerUrl: "https://w.test", autoSync: false }));
+    global.fetch = vi.fn(async () => ({ ok: true, json: async () => ({ farmingLevel: 80 }) }));
+    render(<App />);
+    await new Promise(r => setTimeout(r, 40));
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(JSON.parse(localStorage.getItem("osrs_fp_v5")).farmingLevel).toBe(30);
+  });
+});
+
 describe("App WiseOldMan level import", () => {
   it("fills Farming level from a username", async () => {
     setProfile({ farmingLevel: 30 });

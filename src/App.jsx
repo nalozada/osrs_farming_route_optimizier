@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
 import { QUESTS, DIARIES, DIARY_TIERS, TELEPORTS, OTHER_UNLOCKS, PATCHES, PATCH_TYPES, CROPS } from "./data.js";
 import { meetsReqs, generateRoute, getAllRouteItems, isProfileEmpty, loadProfile, saveProfile, normalizeProfile, loadSession, saveSession, plantableSeedTypes, loadSync, saveSync, loadAcct, saveAcct } from "./engine.js";
+import { fetchAccountData } from "./sync/client.js";
+
+const AUTO_SYNC_MS = 60 * 60 * 1000; // hourly
 
 // ═══════════════════════════════════════════════════════════════
 // COMPONENTS
@@ -125,7 +128,7 @@ const RouteStep = memo(function RouteStep({ step, checked, onToggle }) {
   );
 });
 
-function ProfileEditor({ profile, setProfile, onClose, workerUrl, onWorkerUrlChange, acct, onAccountData }) {
+function ProfileEditor({ profile, setProfile, onClose, workerUrl, onWorkerUrlChange, acct, onAccountData, autoSync, onAutoSyncChange }) {
   const [l, setL] = useState(() => normalizeProfile(JSON.parse(JSON.stringify(profile))));
   const cardRef = useRef(null);
   const [syncBusy, setSyncBusy] = useState(false);
@@ -143,9 +146,7 @@ function ProfileEditor({ profile, setProfile, onClose, workerUrl, onWorkerUrlCha
     if (!workerUrl) { setSyncMsg("Enter your Worker URL first (see worker/README.md)."); return; }
     setSyncBusy(true); setSyncMsg("Syncing…");
     try {
-      const r = await fetch(workerUrl, { cache: "no-store" });
-      const d = await r.json().catch(() => null);
-      if (!r.ok || !d || d.error) throw new Error((d && d.error) || ("HTTP " + r.status));
+      const d = await fetchAccountData(workerUrl);
       setL(p => normalizeProfile({
         ...p,
         farmingLevel: Number.isFinite(d.farmingLevel) ? d.farmingLevel : p.farmingLevel,
@@ -226,6 +227,10 @@ function ProfileEditor({ profile, setProfile, onClose, workerUrl, onWorkerUrlCha
                 {syncBusy ? "Working…" : "Sync from my GIM account"}
               </button>
             </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, fontSize: 12, color: "#9bb59f", cursor: "pointer" }}>
+              <input type="checkbox" checked={!!autoSync} onChange={e => onAutoSyncChange?.(e.target.checked)} style={{ accentColor: "#4a8844" }} />
+              Auto-sync hourly (and on open) while the app is open — Farming level, quests, diaries &amp; bank seeds stay current. Manual sync still works anytime.
+            </label>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 8 }}>
               <input
                 type="text" value={rsn} placeholder="OSRS username (Farming level only)"
@@ -333,9 +338,39 @@ export default function App() {
 
   // Account sync (GIM Worker URL + last synced AccountData for bank-aware gating).
   const [workerUrl, setWorkerUrl] = useState(() => loadSync().workerUrl || "");
+  const [autoSync, setAutoSync] = useState(() => loadSync().autoSync !== false); // default on
   const [acct, setAcct] = useState(loadAcct);
-  const onWorkerUrlChange = u => { setWorkerUrl(u); saveSync({ workerUrl: u }); };
+  const onWorkerUrlChange = u => { setWorkerUrl(u); saveSync({ workerUrl: u, autoSync }); };
+  const onAutoSyncChange = v => { setAutoSync(v); saveSync({ workerUrl, autoSync: v }); };
   const onAccountData = d => { setAcct(d); saveAcct(d); };
+
+  // Background sync: merge account facts (Farming level, quests, diaries) into the
+  // saved profile and refresh bank-seed data. Teleports/unlocks stay manual.
+  const applyAccount = useCallback(d => {
+    setAcct(d); saveAcct(d);
+    setProf(p => {
+      const merged = normalizeProfile({
+        ...p,
+        farmingLevel: Number.isFinite(d.farmingLevel) ? d.farmingLevel : p.farmingLevel,
+        quests: { ...p.quests, ...(d.quests || {}) },
+        diaries: { ...p.diaries, ...(d.diaries || {}) },
+      });
+      saveProfile(merged);
+      return merged;
+    });
+  }, []);
+
+  // Auto-sync: on open if stale, then hourly while the tab is open.
+  useEffect(() => {
+    if (!workerUrl || !autoSync) return;
+    let cancelled = false;
+    const doSync = () => fetchAccountData(workerUrl).then(d => { if (!cancelled) applyAccount(d); }).catch(() => {});
+    const last = acct && acct.updatedAt ? Date.parse(acct.updatedAt) : 0;
+    if (!last || Date.now() - last > AUTO_SYNC_MS) doSync();
+    const id = setInterval(doSync, AUTO_SYNC_MS);
+    return () => { cancelled = true; clearInterval(id); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workerUrl, autoSync]);
   // Owned seed names from the last sync (null => no bank data => no seed restriction).
   const ownedSeeds = acct && Array.isArray(acct.ownedSeedNames) ? acct.ownedSeedNames : null;
   // { type: bool } — can plant something of this type (farming level + owned seeds).
@@ -693,7 +728,7 @@ export default function App() {
         )}
       </main>
 
-      {showProf && <ProfileEditor profile={prof} setProfile={handleSave} onClose={() => setShowProf(false)} workerUrl={workerUrl} onWorkerUrlChange={onWorkerUrlChange} acct={acct} onAccountData={onAccountData} />}
+      {showProf && <ProfileEditor profile={prof} setProfile={handleSave} onClose={() => setShowProf(false)} workerUrl={workerUrl} onWorkerUrlChange={onWorkerUrlChange} acct={acct} onAccountData={onAccountData} autoSync={autoSync} onAutoSyncChange={onAutoSyncChange} />}
     </div>
   );
 }
