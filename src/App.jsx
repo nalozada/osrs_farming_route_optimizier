@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
 import { QUESTS, DIARIES, DIARY_TIERS, TELEPORTS, OTHER_UNLOCKS, PATCHES, PATCH_TYPES, CROPS } from "./data.js";
-import { meetsReqs, generateRoute, getAllRouteItems, isProfileEmpty, loadProfile, saveProfile, normalizeProfile, loadSession, saveSession, plantableSeedTypes, loadSync, saveSync, loadAcct, saveAcct } from "./engine.js";
+import { meetsReqs, generateRoute, getAllRouteItems, isProfileEmpty, loadProfile, saveProfile, normalizeProfile, loadSession, saveSession, plantableSeedTypes, loadSync, saveSync, loadAcct, saveAcct, normalizeCropSelections, baseSeedName, allocateCrops } from "./engine.js";
 import { fetchAccountData } from "./sync/client.js";
 
 const AUTO_SYNC_MS = 60 * 60 * 1000; // hourly
@@ -120,6 +120,9 @@ const RouteStep = memo(function RouteStep({ step, checked, onToggle }) {
           <span style={{ color: checked ? "#5a8a5a" : "#bbb", fontSize: 13, textDecoration: checked ? "line-through" : "none" }}>{step.teleport}</span>
           <SpeedBadge speed={step.teleportSpeed} />
         </div>
+        {step.plantDisplay && step.plantDisplay.length > 0 && (
+          <div style={{ marginTop: 4, fontSize: 12, color: "#9ccc9c" }}>🌱 Plant: {step.plantDisplay.join(", ")}{step.leftover > 0 ? ` · ${step.leftover} unplanted (out of seeds)` : ""}</div>
+        )}
         {step.overflow && <div style={{ marginTop: 6, fontSize: 11, color: "#e0a050", background: "#2a2110", border: "1px solid #4a3a18", borderRadius: 6, padding: "4px 8px" }}>⚠ This stop needs more than one inventory of items — split it into two trips.</div>}
         {step.notes.length > 0 && <div style={{ marginTop: 4 }}>{step.notes.map((n,i) => <div key={i} style={{ fontSize: 11, color: "#a8975a", fontStyle: "italic" }}>💡 {n}</div>)}</div>}
         {!checked && step.upgrade && <UpgradeHint upgrade={step.upgrade} />}
@@ -152,12 +155,17 @@ function ProfileEditor({ profile, setProfile, onClose, workerUrl, onWorkerUrlCha
         farmingLevel: Number.isFinite(d.farmingLevel) ? d.farmingLevel : p.farmingLevel,
         quests: { ...p.quests, ...(d.quests || {}) },
         diaries: { ...p.diaries, ...(d.diaries || {}) },
+        // Additive: derived teleports/unlocks contain only `true`, so a manual toggle
+        // (e.g. a POH-mounted glory the scan can't see) is never turned off.
+        teleports: { ...p.teleports, ...(d.teleports || {}) },
+        unlocks: { ...p.unlocks, ...(d.unlocks || {}) },
       }));
       onAccountData?.(d);
       const nq = Object.values(d.quests || {}).filter(Boolean).length;
       const nd = Object.values(d.diaries || {}).filter(t => t && t !== "None").length;
-      const ns = Object.values(d.seeds || {}).filter(Boolean).length;
-      setSyncMsg(`✓ Synced — Farming ${d.farmingLevel}, ${nq} quests, ${nd} diaries, seeds for ${ns} patch types. (Teleports/unlocks stay manual.)`);
+      const nt = Object.values(d.teleports || {}).filter(Boolean).length;
+      const nu = Object.values(d.unlocks || {}).filter(Boolean).length;
+      setSyncMsg(`✓ Synced — Farming ${d.farmingLevel}, ${nq} quests, ${nd} diaries, ${nt} teleports, ${nu} unlocks. POH-mounted/stashed teleports can't be detected — keep those on manually.`);
     } catch (e) {
       setSyncMsg("Sync failed: " + e.message + ". Check the Worker URL and that it's deployed.");
     } finally { setSyncBusy(false); }
@@ -278,6 +286,7 @@ function ProfileEditor({ profile, setProfile, onClose, workerUrl, onWorkerUrlCha
               <h3 style={{ margin: 0, color: "#c9a84c", fontSize: 14, textTransform: "uppercase", letterSpacing: 1 }}>Teleports & Transportation</h3>
               <button onClick={allT} style={{ background: "none", border: "1px solid #444", borderRadius: 4, color: "#aaa", fontSize: 11, padding: "3px 10px", cursor: "pointer" }}>{TELEPORTS.every(t => l.teleports[t.id]) ? "Deselect All" : "Select All"}</button>
             </div>
+            <div style={{ fontSize: 11, color: "#8a8a8a", marginBottom: 10, fontStyle: "italic" }}>Account Sync auto-detects most of these. Teleports kept in your POH (e.g. a mounted glory), a STASH unit, or otherwise not in your bank/inventory/equipment can't be detected — toggle those on manually. Planted spirit trees and a few unlocks also stay manual.</div>
             {tpGroups.filter(g => g.ids.length > 0).map(grp => (
               <div key={grp.label} style={{ marginBottom: 12 }}>
                 <div style={{ fontSize: 11, color: "#777", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.5px" }}>{grp.label}</div>
@@ -329,7 +338,7 @@ export default function App() {
   const [checked, setChecked] = useState(() => restored.checked || {});
   const [showRoute, setShowRoute] = useState(() => !!restored.showRoute);
   const [showCropSelect, setShowCropSelect] = useState(() => !!restored.showCropSelect);
-  const [cropSelections, setCropSelections] = useState(() => restored.cropSelections || {});
+  const [cropSelections, setCropSelections] = useState(() => normalizeCropSelections(restored.cropSelections || {}));
 
   // Persist the working session whenever it changes.
   useEffect(() => {
@@ -344,8 +353,9 @@ export default function App() {
   const onAutoSyncChange = v => { setAutoSync(v); saveSync({ workerUrl, autoSync: v }); };
   const onAccountData = d => { setAcct(d); saveAcct(d); };
 
-  // Background sync: merge account facts (Farming level, quests, diaries) into the
-  // saved profile and refresh bank-seed data. Teleports/unlocks stay manual.
+  // Background sync: merge account facts (Farming level, quests, diaries) + detected
+  // teleports/unlocks into the saved profile and refresh bank-seed data. Teleport/unlock
+  // merge is ADDITIVE (derived has only `true` keys) so manual/POH-only toggles survive.
   const applyAccount = useCallback(d => {
     setAcct(d); saveAcct(d);
     setProf(p => {
@@ -354,6 +364,8 @@ export default function App() {
         farmingLevel: Number.isFinite(d.farmingLevel) ? d.farmingLevel : p.farmingLevel,
         quests: { ...p.quests, ...(d.quests || {}) },
         diaries: { ...p.diaries, ...(d.diaries || {}) },
+        teleports: { ...p.teleports, ...(d.teleports || {}) },
+        unlocks: { ...p.unlocks, ...(d.unlocks || {}) },
       });
       saveProfile(merged);
       return merged;
@@ -371,8 +383,10 @@ export default function App() {
     return () => { cancelled = true; clearInterval(id); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workerUrl, autoSync]);
-  // Owned seed names from the last sync (null => no bank data => no seed restriction).
+  // Owned seed names + counts from the last sync (null => no bank data).
   const ownedSeeds = acct && Array.isArray(acct.ownedSeedNames) ? acct.ownedSeedNames : null;
+  const ownedSeedCounts = acct && acct.ownedSeedCounts ? acct.ownedSeedCounts : null;
+  const ownedSeedSet = useMemo(() => new Set((ownedSeeds || []).map(baseSeedName)), [acct]); // eslint-disable-line react-hooks/exhaustive-deps
   // { type: bool } — can plant something of this type (farming level + owned seeds).
   const plantableByType = useMemo(() => plantableSeedTypes(prof, ownedSeeds), [prof, acct]); // eslint-disable-line react-hooks/exhaustive-deps
   // Selected types we have to skip because the bank has no plantable seed for them.
@@ -389,23 +403,32 @@ export default function App() {
     const defaults = {};
     const lvl = prof.farmingLevel || 1;
     for (const t of genTypes) {
-      if (!cropSelections[t] && CROPS[t] && CROPS[t].length > 0) {
-        // Bush and cactus default to "pick only" since they usually don't need replanting
-        if (t === "bush" || t === "cactus") {
-          defaults[t] = "pick_only";
-        } else {
-          // Default to the highest-level crop the player can actually plant.
-          const plantable = CROPS[t].filter(c => c.id !== "pick_only" && (c.lvl || 1) <= lvl);
-          defaults[t] = (plantable.length ? plantable[plantable.length - 1] : CROPS[t][0]).id;
-        }
+      if ((cropSelections[t] && cropSelections[t].length) || !CROPS[t] || !CROPS[t].length) continue;
+      if (t === "bush" || t === "cactus") {
+        defaults[t] = ["pick_only"]; // usually just picked, not replanted
+        continue;
+      }
+      const plantable = CROPS[t].filter(c => c.id !== "pick_only" && (c.lvl || 1) <= lvl);
+      if (ownedSeedCounts) {
+        // Default-select every crop whose seed you actually own (and can plant).
+        const owned = plantable.filter(c => c.seed && ownedSeedSet.has(baseSeedName(c.seed)));
+        defaults[t] = owned.length ? owned.map(c => c.id)
+          : [(plantable.length ? plantable[plantable.length - 1] : CROPS[t][0]).id];
+      } else {
+        // No bank data: default to the single highest-level plantable crop (as before).
+        defaults[t] = [(plantable.length ? plantable[plantable.length - 1] : CROPS[t][0]).id];
       }
     }
     setCropSelections(prev => ({ ...prev, ...defaults }));
     setShowCropSelect(true);
   };
+  const toggleCrop = (typeId, cropId) => setCropSelections(prev => {
+    const cur = prev[typeId] || [];
+    return { ...prev, [typeId]: cur.includes(cropId) ? cur.filter(c => c !== cropId) : [...cur, cropId] };
+  });
   const goGenerate = () => {
     // Generate only for types we can actually plant (skip seed-blocked ones).
-    setRoute(generateRoute(genTypes, prof, cropSelections));
+    setRoute(generateRoute(genTypes, prof, cropSelections, ownedSeedCounts));
     setChecked({});
     setShowCropSelect(false);
     setShowRoute(true);
@@ -426,6 +449,7 @@ export default function App() {
         (s.bankCategories || []).forEach(c => lines.push(`   ${c.label}: ${c.items.join(", ")}`));
       } else {
         lines.push(`${s.step}. ${s.location} (${s.region}) — ${s.teleport}`);
+        if (s.plantDisplay && s.plantDisplay.length) lines.push(`   Plant: ${s.plantDisplay.join(", ")}${s.leftover > 0 ? ` (${s.leftover} unplanted)` : ""}`);
         if (s.farmingItems && s.farmingItems.length) lines.push(`   Items: ${s.farmingItems.join(", ")}`);
       }
     });
@@ -576,11 +600,17 @@ export default function App() {
                 const pt = PATCH_TYPES.find(p => p.id === typeId);
                 const crops = CROPS[typeId];
                 const patchCount = PATCHES.filter(p => p.type === typeId && meetsReqs(p, prof)).length;
-                // The engine treats each allotment location as 2 plantable patches.
-                const effCount = patchCount * (typeId === "allotment" ? 2 : 1);
-                const selected = cropSelections[typeId];
-                const selectedCrop = crops.find(c => c.id === selected);
+                const slotsPerLoc = typeId === "allotment" ? 2 : 1;
+                const totalSlots = patchCount * slotsPerLoc;
+                const selectedIds = cropSelections[typeId] || [];
                 const lvl = prof.farmingLevel || 1;
+                // Preview the exact mix the route will plant (reuses the engine allocator).
+                const previewStops = Array.from({ length: patchCount }, () => ({ patches: [{ type: typeId }] }));
+                const pAlloc = allocateCrops(previewStops, { [typeId]: selectedIds }, ownedSeedCounts);
+                const pCounts = {}; let pLeftover = 0;
+                for (const st of pAlloc) { const at = st[typeId]; if (!at) continue; pLeftover += at.leftover; for (const [cid, n] of Object.entries(at.assigned)) pCounts[cid] = (pCounts[cid] || 0) + n; }
+                const pickOnly = selectedIds.includes("pick_only");
+                const previewParts = Object.entries(pCounts).filter(([cid]) => cid !== "pick_only").map(([cid, n]) => { const cr = crops.find(c => c.id === cid); return `${cr ? cr.name : cid} ×${n}`; });
 
                 return (
                   <div key={typeId} style={{
@@ -590,47 +620,36 @@ export default function App() {
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
                       <span style={{ fontSize: 20 }}>{pt?.icon}</span>
                       <span style={{ fontWeight: 700, fontSize: 14, color: pt?.color || "#ccc", fontFamily: "'Cinzel', serif" }}>{pt?.label}</span>
-                      <span style={{ fontSize: 11, color: "#8a8a8a" }}>({patchCount} patch{patchCount !== 1 ? "es" : ""})</span>
+                      <span style={{ fontSize: 11, color: "#8a8a8a" }}>({patchCount} patch{patchCount !== 1 ? "es" : ""}{slotsPerLoc === 2 ? ` · ${totalSlots} plots` : ""}) — pick one or more</span>
                     </div>
-                    <select
-                      value={selected || ""}
-                      onChange={e => setCropSelections(prev => ({ ...prev, [typeId]: e.target.value }))}
-                      style={{
-                        width: "100%", padding: "10px 12px", borderRadius: 8,
-                        background: "#111", color: "#e0c97f", border: `1px solid ${pt?.color || "#444"}44`,
-                        fontSize: 14, fontFamily: "'Crimson Text', serif",
-                      }}
-                    >
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                       {crops.map(c => {
                         const tooHigh = c.id !== "pick_only" && (c.lvl || 1) > lvl;
+                        const sel = selectedIds.includes(c.id);
+                        const ownedQty = (c.seed && ownedSeedCounts) ? (ownedSeedCounts[baseSeedName(c.seed)] || 0) : null;
                         return (
-                          <option key={c.id} value={c.id} disabled={tooHigh}>
-                            {c.id === "pick_only" ? c.name : `${c.name} (Lvl ${c.lvl})${tooHigh ? " 🔒" : ""} — ${c.seed}${c.payment ? ` | Pay: ${c.payment}` : " | No protection"}`}
-                          </option>
+                          <button key={c.id} onClick={() => { if (!tooHigh) toggleCrop(typeId, c.id); }} disabled={tooHigh}
+                            title={c.id === "pick_only" ? "Just pick — don't replant" : `${c.seed}${c.payment ? " | Pay: " + c.payment : " | no protection"}`}
+                            style={{
+                              padding: "6px 10px", borderRadius: 8, fontSize: 12, fontFamily: "'Crimson Text', serif",
+                              cursor: tooHigh ? "not-allowed" : "pointer",
+                              background: sel ? (pt?.color || "#4CAF50") + "33" : "#161616",
+                              border: `1px solid ${sel ? (pt?.color || "#4CAF50") : "#333"}`,
+                              color: tooHigh ? "#555" : sel ? "#e8dcc0" : "#bbb",
+                              opacity: tooHigh ? 0.6 : 1,
+                            }}>
+                            {c.id === "pick_only" ? "Pick only" : c.name}
+                            {c.id !== "pick_only" && <span style={{ fontSize: 10, color: "#8a8a8a" }}> · L{c.lvl}{tooHigh ? " 🔒" : ""}</span>}
+                            {ownedQty != null && <span style={{ fontSize: 10, color: ownedQty ? "#88cc88" : "#a06a3a" }}> · {ownedQty ? `own ${ownedQty}` : "none"}</span>}
+                          </button>
                         );
                       })}
-                    </select>
-                    {selectedCrop && selectedCrop.id !== "pick_only" && (
-                      <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
-                        {selectedCrop.seed && (
-                          <span style={{ padding: "2px 8px", borderRadius: 4, fontSize: 10, background: "#1a2a1a", color: "#88cc88", border: "1px solid #2a442a" }}>
-                            Bring: {selectedCrop.seed} × {effCount}
-                          </span>
-                        )}
-                        {selectedCrop.payment && (
-                          <span style={{ padding: "2px 8px", borderRadius: 4, fontSize: 10, background: "#2a2210", color: "#ddaa55", border: "1px solid #443820" }}>
-                            Pay: {selectedCrop.payment} × {effCount}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    {selectedCrop && selectedCrop.id === "pick_only" && (
-                      <div style={{ marginTop: 6 }}>
-                        <span style={{ padding: "2px 8px", borderRadius: 4, fontSize: 10, background: "#1a1a2a", color: "#9090cc", border: "1px solid #333366" }}>
-                          Just picking — no seeds needed
-                        </span>
-                      </div>
-                    )}
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 11, color: "#9a9a9a" }}>
+                      {pickOnly ? "Just picking — no seeds needed."
+                        : previewParts.length ? `Plan: ${previewParts.join(", ")}${pLeftover > 0 ? ` — ${pLeftover} ${pLeftover === 1 ? "patch" : "patches"} unplanted (out of seeds)` : ""}`
+                        : selectedIds.length ? "No plantable/owned seeds among your selection." : "No crops selected — this type will be skipped."}
+                    </div>
                   </div>
                 );
               })}

@@ -60,7 +60,69 @@ export function getBestUpgrade(patch, prof, curSpeed) {
   return { method: best.method, speed: best.speed, missing };
 }
 
-export function generateRoute(selectedTypes, prof, cropSelections) {
+// Normalize cropSelections to the {type: [cropId,...]} shape (legacy was {type: cropId}).
+export function normalizeCropSelections(cs) {
+  const out = {};
+  for (const [type, v] of Object.entries(cs || {})) {
+    out[type] = Array.isArray(v) ? v.filter(Boolean) : (v ? [v] : []);
+  }
+  return out;
+}
+
+// How many seeds one patch of this crop consumes (parsed from the ×N in the seed
+// name: herbs 1, allotment ×3, hops ×4, saplings 1). pick_only / no-seed => 0.
+export function seedsPerPatch(crop) {
+  if (!crop || !crop.seed) return 0;
+  const m = crop.seed.match(/[×x]\s*(\d+)\s*$/i);
+  return m ? Number(m[1]) : 1;
+}
+
+// Distribute the selected crops across each patch type's plant-slots (allotment = 2
+// slots/location, else 1), in route order, limited by how many seeds the player owns.
+// ownedSeedCounts null/undefined => unlimited (no bank data => fill freely). Returns an
+// array parallel to `stops`: each entry is { [type]: { assigned:{cropId:count}, leftover } }.
+export function allocateCrops(stops, cropSelections, ownedSeedCounts) {
+  const sel = cropSelections || {};
+  const rem = {}; // rem[type][cropId] = patches still affordable
+  for (const [type, ids] of Object.entries(sel)) {
+    rem[type] = {};
+    for (const cropId of ids) {
+      const crop = (CROPS[type] || []).find(c => c.id === cropId);
+      if (!crop) { rem[type][cropId] = 0; continue; }
+      if (cropId === "pick_only" || !crop.seed || !ownedSeedCounts) { rem[type][cropId] = Infinity; continue; }
+      const owned = ownedSeedCounts[baseSeedName(crop.seed)] || 0;
+      rem[type][cropId] = Math.floor(owned / (seedsPerPatch(crop) || 1));
+    }
+  }
+  const cursor = {}; // round-robin position per type (spreads a mix across patches)
+  return stops.map(s => {
+    const byType = {};
+    for (const p of s.patches) {
+      const type = p.type;
+      const ids = sel[type] || [];
+      const slots = type === "allotment" ? 2 : 1;
+      const bt = byType[type] || (byType[type] = { assigned: {}, leftover: 0 });
+      if (!ids.length) { bt.leftover += slots; continue; }
+      for (let k = 0; k < slots; k++) {
+        let chosen = null;
+        for (let t = 0; t < ids.length; t++) {
+          const cid = ids[(cursor[type] = (cursor[type] || 0), cursor[type]++) % ids.length];
+          if ((rem[type][cid] ?? 0) > 0) { chosen = cid; break; }
+        }
+        if (chosen) {
+          if (rem[type][chosen] !== Infinity) rem[type][chosen] -= 1;
+          bt.assigned[chosen] = (bt.assigned[chosen] || 0) + 1;
+        } else {
+          bt.leftover += 1;
+        }
+      }
+    }
+    return byType;
+  });
+}
+
+export function generateRoute(selectedTypes, prof, cropSelections, ownedSeedCounts = null) {
+  const cropSel = normalizeCropSelections(cropSelections);
   const groups = {};
   const avail = PATCHES.filter(p => selectedTypes.includes(p.type) && meetsReqs(p, prof));
 
@@ -94,8 +156,11 @@ export function generateRoute(selectedTypes, prof, cropSelections) {
   const brimhavenIdx = stops.findIndex(s => s.key === "brimhaven");
   const charterFromCatherbyOk = catherbyIdx !== -1 && brimhavenIdx !== -1 && catherbyIdx < brimhavenIdx;
 
+  // Allocate the selected crops to each stop's patches (count-limited crop mix).
+  const alloc = allocateCrops(stops, cropSel, ownedSeedCounts);
+
   // Build stops with inventory data using actual crop selections
-  const rawSteps = stops.map((s) => {
+  const rawSteps = stops.map((s, i) => {
     let bestUpgrade = null;
     for (const p of s.patches) {
       const u = getBestUpgrade(p, prof, s.bestSpeed);
@@ -116,36 +181,27 @@ export function generateRoute(selectedTypes, prof, cropSelections) {
       }
     }
 
-    // Compute actual farming items from crop selections — track quantities
+    // Compute farming items from the per-stop crop allocation — track quantities,
+    // a human "plant X here" list, and any patches left unplanted (out of seeds).
     const seedQty = {}; // { "Maple sapling": 3 }
     const paymentQty = {}; // { "Oranges(5) ×1": 3 }
     let farmingSlots = 0;
     let needsTreeRemovalCoins = false;
+    const plantDisplay = []; // e.g. ["Ranarr ×3", "Snapdragon ×2"]
+    let leftover = 0;
 
-    for (const p of s.patches) {
-      const cropList = CROPS[p.type];
-      const selectedCrop = cropSelections[p.type];
-      if (cropList && selectedCrop) {
-        const crop = cropList.find(c => c.id === selectedCrop);
-        if (crop) {
-          // Pick-only mode: no seeds or payments needed
-          if (crop.id === "pick_only") continue;
-
-          const patchCount = p.type === "allotment" ? 2 : 1;
-          if (crop.seed) {
-            seedQty[crop.seed] = (seedQty[crop.seed] || 0) + patchCount;
-          }
-          if (crop.payment) {
-            paymentQty[crop.payment] = (paymentQty[crop.payment] || 0) + patchCount;
-          }
-
-          // Trees and fruit trees need coins for farmer to chop down old tree
-          if (p.type === "tree" || p.type === "fruitTree") {
-            needsTreeRemovalCoins = true;
-          }
-        }
-      } else {
-        farmingSlots += 1;
+    const stopAlloc = alloc[i] || {};
+    for (const [type, at] of Object.entries(stopAlloc)) {
+      const cropList = CROPS[type] || [];
+      leftover += at.leftover || 0;
+      for (const [cropId, count] of Object.entries(at.assigned)) {
+        const crop = cropList.find(c => c.id === cropId);
+        if (!crop) continue;
+        if (crop.id === "pick_only" || !crop.seed) { plantDisplay.push(crop.name); continue; }
+        seedQty[crop.seed] = (seedQty[crop.seed] || 0) + count;
+        if (crop.payment) paymentQty[crop.payment] = (paymentQty[crop.payment] || 0) + count;
+        if (type === "tree" || type === "fruitTree") needsTreeRemovalCoins = true;
+        plantDisplay.push(count > 1 ? `${crop.name} ×${count}` : crop.name);
       }
     }
 
@@ -190,6 +246,7 @@ export function generateRoute(selectedTypes, prof, cropSelections) {
       seedQty: { ...seedQty }, paymentQty: { ...paymentQty },
       needsTreeRemovalCoins,
       farmingSlots,
+      plantDisplay, leftover,
       notes: [...new Set(s.notes)], upgrade: bestUpgrade,
     };
   });

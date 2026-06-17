@@ -163,3 +163,24 @@ export function ownedSeedNamesFromBank(...arrays) {
   }
   return owned;
 }
+
+/**
+ * Like ownedSeedNamesFromBank but SUMS quantities: returns { canonicalSeedName: qty }.
+ * Used to plan a crop mix limited by how many seeds the player actually owns.
+ * @param {...Array<number|string>} arrays
+ * @returns {Object<string, number>}
+ */
+export function ownedSeedCountsFromBank(...arrays) {
+  const counts = {};
+  for (const arr of arrays) {
+    if (!Array.isArray(arr)) continue;
+    for (let i = 0; i + 1 < arr.length; i += 2) {
+      const id = Number(arr[i]);
+      const qty = Number(arr[i + 1]);
+      if (!Number.isFinite(id) || !Number.isFinite(qty) || qty <= 0) continue;
+      const name = SEED_ITEM_IDS[id];
+      if (name) counts[name] = (counts[name] || 0) + qty;
+    }
+  }
+  return counts;
+}

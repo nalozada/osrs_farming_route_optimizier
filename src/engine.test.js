@@ -12,9 +12,15 @@ import {
   baseSeedName,
   consolidateRunes,
   categorizeItems,
+  normalizeCropSelections,
+  seedsPerPatch,
+  allocateCrops,
 } from "./engine.js";
+import { CROPS } from "./data.js";
 
 const patch = id => PATCHES.find(p => p.id === id);
+const herbStops = n => Array.from({ length: n }, () => ({ patches: [{ type: "herb" }] }));
+const cropById = (type, id) => CROPS[type].find(c => c.id === id);
 // Build a profile, then normalize so all sub-objects exist.
 const profile = (over = {}) => normalizeProfile({ ...defaultProfile(), ...over });
 
@@ -179,5 +185,48 @@ describe("consolidateRunes", () => {
     const cats = categorizeItems(["Law rune", "Law rune ×2", "Earth rune ×2", "Spade"]);
     const runes = cats.find(c => c.label.includes("Runes"));
     expect(runes.items).toEqual(["Law runes", "Earth runes"]);
+  });
+});
+
+describe("multi-crop allocation (Feature B)", () => {
+  it("normalizeCropSelections wraps legacy strings into arrays", () => {
+    expect(normalizeCropSelections({ herb: "ranarr" })).toEqual({ herb: ["ranarr"] });
+    expect(normalizeCropSelections({ herb: ["ranarr", "irit"] })).toEqual({ herb: ["ranarr", "irit"] });
+    expect(normalizeCropSelections({ herb: "" })).toEqual({ herb: [] });
+  });
+
+  it("seedsPerPatch parses the ×N from the seed name", () => {
+    expect(seedsPerPatch(cropById("herb", "ranarr"))).toBe(1);     // "Ranarr seed"
+    expect(seedsPerPatch(cropById("allotment", "potato"))).toBe(3); // "Potato seed ×3"
+    expect(seedsPerPatch(cropById("hops", "barley"))).toBe(4);      // "Barley seed ×4"
+    expect(seedsPerPatch(cropById("tree", "oak"))).toBe(1);         // "Oak sapling"
+    expect(seedsPerPatch(cropById("bush", "pick_only"))).toBe(0);
+  });
+
+  it("with no bank data, fills every slot (round-robin for a mix)", () => {
+    const alloc = allocateCrops(herbStops(4), { herb: ["ranarr", "snapdragon"] }, null);
+    const counts = {};
+    for (const stop of alloc) for (const [c, n] of Object.entries(stop.herb.assigned)) counts[c] = (counts[c] || 0) + n;
+    expect(counts.ranarr + counts.snapdragon).toBe(4); // all 4 patches planted
+    expect(counts.ranarr).toBe(2); // evenly spread
+    expect(counts.snapdragon).toBe(2);
+    expect(alloc.every(s => s.herb.leftover === 0)).toBe(true);
+  });
+
+  it("caps each crop by owned seed count and leaves the rest unplanted", () => {
+    // Own 2 Ranarr seeds (spp 1 => 2 patches); 5 herb patches selected.
+    const alloc = allocateCrops(herbStops(5), { herb: ["ranarr"] }, { "Ranarr seed": 2 });
+    const planted = alloc.reduce((n, s) => n + (s.herb.assigned.ranarr || 0), 0);
+    const leftover = alloc.reduce((n, s) => n + s.herb.leftover, 0);
+    expect(planted).toBe(2);
+    expect(leftover).toBe(3);
+  });
+
+  it("generateRoute respects owned counts (withdraw only what you can plant)", () => {
+    const prof = normalizeProfile({ teleports: { explorerRing: true }, farmingLevel: 80 });
+    // Only 2 ranarr seeds owned -> at most 2 herb patches' worth withdrawn.
+    const route = generateRoute(["herb"], prof, { herb: ["ranarr"] }, { "Ranarr seed": 2 });
+    const total = route.filter(s => !s.isBank).reduce((n, s) => n + (s.seedQty["Ranarr seed"] || 0), 0);
+    expect(total).toBe(2);
   });
 });
