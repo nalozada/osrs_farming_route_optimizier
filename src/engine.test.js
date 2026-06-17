@@ -10,6 +10,8 @@ import {
   plantableSeedTypes,
   hasPlantableSeed,
   baseSeedName,
+  consolidateRunes,
+  categorizeItems,
 } from "./engine.js";
 
 const patch = id => PATCHES.find(p => p.id === id);
@@ -158,5 +160,24 @@ describe("plantableSeedTypes / hasPlantableSeed (bank-material awareness)", () =
     expect(r.bush).toBe(true);
     expect(r.cactus).toBe(true);
     expect(r.herb).toBe(false); // herb has no pick-only crop
+  });
+});
+
+describe("consolidateRunes", () => {
+  it("collapses ×N and plain rune variants into one pluralized entry", () => {
+    const out = consolidateRunes(["Law rune", "Air rune", "Earth rune", "Law rune ×2", "Earth rune ×2", "Fire rune", "Water rune"]);
+    expect(out).toEqual(["Law runes", "Air runes", "Earth runes", "Fire runes", "Water runes"]);
+  });
+
+  it("leaves spellbook bundles and non-rune items untouched", () => {
+    expect(consolidateRunes(["Runes (Lunar)", "Runes (Arceuus: Soul, Law, Nature)"]))
+      .toEqual(["Runes (Lunar)", "Runes (Arceuus: Soul, Law, Nature)"]);
+    expect(consolidateRunes(["Dramen/Lunar staff"])).toEqual(["Dramen/Lunar staff"]);
+  });
+
+  it("categorizeItems emits consolidated runes (no ×N, no dupes)", () => {
+    const cats = categorizeItems(["Law rune", "Law rune ×2", "Earth rune ×2", "Spade"]);
+    const runes = cats.find(c => c.label.includes("Runes"));
+    expect(runes.items).toEqual(["Law runes", "Earth runes"]);
   });
 });
