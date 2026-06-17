@@ -1,0 +1,12 @@
+name = "osrs-farm-gim-proxy"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+# Non-secret config. The group name and player name are not sensitive.
+# Change these to match your own Group Ironman tracker group/player.
+[vars]
+GIM_GROUP = "BD GIM"
+GIM_PLAYER = "Fentf0ld"
+
+# GIM_TOKEN is a SECRET — never put it here. Set it with:
+#   wrangler secret put GIM_TOKEN
