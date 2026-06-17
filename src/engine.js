@@ -399,3 +399,37 @@ export function loadSession() {
 export function saveSession(s) {
   try { localStorage.setItem(SESSION_KEY, JSON.stringify(s)); } catch (e) { /* ignore */ }
 }
+
+// ═══════════════════════════════════════════════════════════════
+// BANK-MATERIAL AWARENESS
+// ═══════════════════════════════════════════════════════════════
+// Strip a trailing quantity suffix so a CROPS seed string ("Potato seed ×3")
+// matches the bank's plain item name ("Potato seed").
+export function baseSeedName(seed) {
+  return typeof seed === "string" ? seed.replace(/\s*[×x]\s*\d+\s*$/i, "").trim() : seed;
+}
+
+// Pure. `ownedSeeds` is a Set/array of seed NAMES the player owns, or null/undefined
+// when no bank data is available. Returns { [patchType]: boolean } — true if at least
+// one crop of that type is plantable at the profile's Farming level AND its seed is
+// owned. A crop with no seed (pick-only) counts as available. When ownedSeeds is
+// null, EVERY type is true (feature disabled / graceful degradation).
+export function plantableSeedTypes(prof, ownedSeeds) {
+  const lvl = (prof && prof.farmingLevel) || 1;
+  const owned = ownedSeeds == null ? null : new Set([...ownedSeeds].map(baseSeedName));
+  const out = {};
+  for (const type of Object.keys(CROPS)) {
+    out[type] = CROPS[type].some(c => {
+      if ((c.lvl || 1) > lvl) return false;     // gated by farming level
+      if (!c.seed) return true;                 // pick-only / no-seed crop
+      if (owned == null) return true;           // no bank data => don't restrict
+      return owned.has(baseSeedName(c.seed));
+    });
+  }
+  return out;
+}
+
+export function hasPlantableSeed(type, prof, ownedSeeds) {
+  const r = plantableSeedTypes(prof, ownedSeeds)[type];
+  return r === undefined ? true : r;
+}
