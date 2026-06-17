@@ -3,9 +3,14 @@
 A tiny Cloudflare Worker that lets the farming optimizer read **your** Group Ironman
 tracker data without exposing your token. It fetches `groupiron.men` server-side,
 derives only the farming-relevant bits (Farming level, completed quests, diary tiers,
-and which seed types you own), and returns that to the app with CORS locked to your
-site's origin. **Your token stays a Worker secret — it never reaches the browser, and
-nothing about your account is published publicly.**
+detected teleports & unlocks, and owned seed names + counts), and returns that to the
+app with CORS locked to your site's origin. **Your token stays a Worker secret — it never
+reaches the browser, and nothing about your account is published publicly.** No raw bank,
+item IDs, coordinates, or non-farming data ever leave the Worker.
+
+> **Re-deploy after updates:** the Worker bundles the shared decoders in `../src/sync/`,
+> so after pulling changes that touch the derive logic, run `wrangler deploy` again or the
+> app won't see the new fields.
 
 ## One-time setup (~5 minutes)
 
