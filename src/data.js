@@ -90,6 +90,34 @@ export const OTHER_UNLOCKS = [
 ];
 
 // ═══════════════════════════════════════════════════════════════
+// ACCOUNT-SYNC COVERAGE — what the "Verify these" quick panel surfaces.
+// Account Sync auto-detects most toggles from quests/diaries/Farming level and a
+// bank/inventory/equipment item scan. These two lists are the gaps:
+//
+//  • SYNC_UNDETECTABLE_*: sync can NEVER set these — there's no quest/diary/level
+//    signal and no scannable item (planted spirit trees, the base spirit-tree
+//    network, the Arceuus spellbook, the Kastori landing site, Fire of Nourishment).
+//    Always shown so a new account can tick what it has.
+//  • SYNC_OFTEN_MISSED_TELEPORTS: jewellery teleports ARE detected from items, but
+//    are commonly mounted in a POH jewellery box or kept in a STASH unit (which the
+//    tracker can't see). Shown only when sync didn't already turn them on.
+//
+// A drift test (src/sync/coverage.test.js) asserts SYNC_UNDETECTABLE_TELEPORTS stays
+// exactly the set of teleports the derivers can't produce.
+export const SYNC_UNDETECTABLE_TELEPORTS = [
+  "spiritTree",
+  "spiritTreeFarmingGuild",
+  "spiritTreePrif",
+  "spiritTreePortSarim",
+  "spiritTreeHosidius",
+  "spiritTreeEtceteria",
+  "spiritTreeBrimhaven",
+  "arceuusSpellbook",
+];
+export const SYNC_UNDETECTABLE_UNLOCKS = ["kastoriQuetzal", "fireOfNourishment"];
+export const SYNC_OFTEN_MISSED_TELEPORTS = TELEPORTS.filter(t => t.cat === "jewellery").map(t => t.id);
+
+// ═══════════════════════════════════════════════════════════════
 // PATCH DATA
 // proximityGroup: patches sharing a proximityGroup are merged
 // into one stop even if not exactly co-located. This handles:

@@ -15,6 +15,8 @@ import {
   normalizeCropSelections,
   seedsPerPatch,
   allocateCrops,
+  resolveWorkerUrl,
+  DEFAULT_WORKER_URL,
 } from "./engine.js";
 import { CROPS } from "./data.js";
 
@@ -185,6 +187,19 @@ describe("consolidateRunes", () => {
     const cats = categorizeItems(["Law rune", "Law rune ×2", "Earth rune ×2", "Spade"]);
     const runes = cats.find(c => c.label.includes("Runes"));
     expect(runes.items).toEqual(["Law runes", "Earth runes"]);
+  });
+});
+
+describe("resolveWorkerUrl (baked-in default vs self-host override)", () => {
+  it("falls back to the baked-in default when no saved URL", () => {
+    expect(resolveWorkerUrl({})).toBe(DEFAULT_WORKER_URL);
+    expect(resolveWorkerUrl(undefined)).toBe(DEFAULT_WORKER_URL);
+    expect(resolveWorkerUrl({ workerUrl: "" })).toBe(DEFAULT_WORKER_URL);
+    expect(resolveWorkerUrl({ workerUrl: "   " })).toBe(DEFAULT_WORKER_URL); // whitespace -> default
+  });
+  it("uses an explicit saved URL (trimmed) over the default", () => {
+    expect(resolveWorkerUrl({ workerUrl: "https://my.example.workers.dev" })).toBe("https://my.example.workers.dev");
+    expect(resolveWorkerUrl({ workerUrl: "  https://my.example.workers.dev  " })).toBe("https://my.example.workers.dev");
   });
 });
 

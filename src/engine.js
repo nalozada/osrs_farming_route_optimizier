@@ -476,6 +476,12 @@ export function saveSession(s) {
 // Account-sync settings (the Cloudflare Worker URL) and the last synced AccountData.
 export const SYNC_KEY = "osrs_sync_v1";
 export const ACCT_KEY = "osrs_acct_v1";
+
+// This tool is built for one specific Group Ironman, so the proxy Worker URL is baked
+// in: the app is "always synced" with no setup. A value saved under SYNC_KEY.workerUrl
+// (e.g. someone self-hosting their own Worker) overrides it.
+export const DEFAULT_WORKER_URL = "https://osrs-farm-gim-proxy.nalozada.workers.dev";
+
 export function loadSync() {
   try { const s = localStorage.getItem(SYNC_KEY); if (s) return JSON.parse(s); } catch (e) { /* ignore */ }
   return {};
@@ -483,12 +489,47 @@ export function loadSync() {
 export function saveSync(s) {
   try { localStorage.setItem(SYNC_KEY, JSON.stringify(s)); } catch (e) { /* ignore */ }
 }
+// The effective Worker URL: an explicit saved value wins, else the baked-in default.
+export function resolveWorkerUrl(saved) {
+  const u = saved && typeof saved.workerUrl === "string" ? saved.workerUrl.trim() : "";
+  return u || DEFAULT_WORKER_URL;
+}
 export function loadAcct() {
   try { const s = localStorage.getItem(ACCT_KEY); if (s) return JSON.parse(s); } catch (e) { /* ignore */ }
   return null;
 }
 export function saveAcct(a) {
   try { localStorage.setItem(ACCT_KEY, JSON.stringify(a)); } catch (e) { /* ignore */ }
+}
+
+// Cached member list from the last sync: { updatedAt, defaultPlayer, members: [...] }.
+// Persisted so a reload can switch members and gate the route without re-fetching.
+export const MEMBERS_KEY = "osrs_members_v1";
+export function loadMembers() {
+  try { const s = localStorage.getItem(MEMBERS_KEY); if (s) { const m = JSON.parse(s); if (m && Array.isArray(m.members)) return m; } } catch (e) { /* ignore */ }
+  return { updatedAt: null, defaultPlayer: null, members: [] };
+}
+export function saveMembers(m) {
+  try { localStorage.setItem(MEMBERS_KEY, JSON.stringify(m)); } catch (e) { /* ignore */ }
+}
+
+// Per-member profiles: { [memberName]: profile }. The empty-string key "" is the
+// manual / no-member-selected profile (also the home of a pre-multi-member profile,
+// migrated from the legacy single PROFILE_KEY on first load). The currently active
+// profile is mirrored to PROFILE_KEY/ACCT_KEY for backward compatibility.
+export const PROFILES_KEY = "osrs_profiles_v1";
+export const MANUAL_KEY = ""; // member key for "no member selected"
+export function loadProfiles() {
+  try {
+    const s = localStorage.getItem(PROFILES_KEY);
+    if (s) { const m = JSON.parse(s); if (m && typeof m === "object" && !Array.isArray(m)) return m; }
+  } catch (e) { /* ignore */ }
+  // Migrate a pre-multi-member profile into the manual slot so existing setups survive.
+  const legacy = loadProfile();
+  return { [MANUAL_KEY]: legacy };
+}
+export function saveProfiles(map) {
+  try { localStorage.setItem(PROFILES_KEY, JSON.stringify(map)); } catch (e) { /* ignore */ }
 }
 
 // ═══════════════════════════════════════════════════════════════

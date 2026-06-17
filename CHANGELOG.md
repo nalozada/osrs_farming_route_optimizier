@@ -2,6 +2,29 @@
 
 Notable work on the OSRS Farming Route Optimizer. Newest first.
 
+## Always-on sync, member picker & per-member profiles
+- **Worker URL baked in** (`engine.js` `DEFAULT_WORKER_URL` / `resolveWorkerUrl`) — the app
+  is "always synced" with zero setup. A self-hosted Worker URL under *Account Sync →
+  Advanced* overrides it.
+- **Worker returns ALL group members** (`worker/src/index.js`) in one response
+  (`{updatedAt, defaultPlayer, members:[{name, ...AccountData}]}`); `@SHARED`/pseudo-members
+  filtered out; `GIM_PLAYER` is now just the default pre-selection. `fetchMembers`
+  (`sync/client.js`) consumes it and still tolerates the legacy single-object shape.
+- **Member picker** on the main menu (and in the editor) — choose which GIM member you are;
+  switching is instant (whole group cached) and the choice persists.
+- **Per-member profiles** (`engine.js` `PROFILES_KEY` map) — each member keeps their own
+  saved profile; the active one is mirrored to the legacy `PROFILE_KEY`/`ACCT_KEY` for
+  back-compat and migration. Teleport/unlock merge stays **additive** (POH-mounted/STASHed
+  toggles survive); a new member only inherits the migrated manual profile if it's the
+  default player.
+- **"Can't auto-detect these" quick panel** replaces the wall-of-text sync message: the
+  toggles sync can't reliably set (`SYNC_UNDETECTABLE_*` + jewellery not currently on) shown
+  as one-tap chips. A drift test (`sync/coverage.test.js`) keeps that list honest vs the
+  derivers.
+- **Privacy:** baking the public URL + returning all members means anyone with the URL can
+  read the group's *derived* farming data (never raw bank/items/coords or the token) — an
+  accepted trade-off for a single-group tool.
+
 ## Account sync: teleports/unlocks + multi-select crop grid (PR #6)
 - **Account sync now fills Teleports & Other Unlocks**, not just level/quests/diaries.
   - Reliable signals from quests/diaries/Farming level (fairy rings, Lunar/Ancient
