@@ -117,3 +117,30 @@ describe("App WiseOldMan level import", () => {
     expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining("api.wiseoldman.net"));
   });
 });
+
+describe("App crop grid (multi-select + counts)", () => {
+  it("shows a multi-select chip grid with owned counts and a plan preview", () => {
+    setProfile({ farmingLevel: 99 });
+    localStorage.setItem("osrs_acct_v1", JSON.stringify({
+      updatedAt: "2026-06-17T00:00:00.000Z", farmingLevel: 99, quests: {}, diaries: {},
+      teleports: {}, unlocks: {}, seeds: { herb: true },
+      ownedSeedNames: ["Ranarr seed", "Snapdragon seed"],
+      ownedSeedCounts: { "Ranarr seed": 5, "Snapdragon seed": 3 },
+    }));
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: /generate optimal route/i }));
+    expect(screen.getByText(/Select Your Crops/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Ranarr.*own 5/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Snapdragon.*own 3/i })).toBeTruthy();
+    expect(screen.getAllByText(/^Plan:/i).length).toBeGreaterThan(0);
+  });
+
+  it("disables crop chips above the player's Farming level", () => {
+    setProfile({ farmingLevel: 50 }); // no account data; herb still reachable
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: /generate optimal route/i }));
+    expect(screen.getByText(/Select Your Crops/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Torstol/i }).disabled).toBe(true);   // lvl 85
+    expect(screen.getByRole("button", { name: /Ranarr/i }).disabled).toBe(false);    // lvl 32
+  });
+});
