@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useCallback, memo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
 import { QUESTS, DIARIES, DIARY_TIERS, TELEPORTS, OTHER_UNLOCKS, PATCHES, PATCH_TYPES, CROPS } from "./data.js";
-import { meetsReqs, generateRoute, getAllRouteItems, isProfileEmpty, loadProfile, saveProfile, normalizeProfile, loadSession, saveSession } from "./engine.js";
+import { meetsReqs, generateRoute, getAllRouteItems, isProfileEmpty, loadProfile, saveProfile, normalizeProfile, loadSession, saveSession, plantableSeedTypes, loadSync, saveSync, loadAcct, saveAcct } from "./engine.js";
 
 // ═══════════════════════════════════════════════════════════════
 // COMPONENTS
@@ -125,15 +125,60 @@ const RouteStep = memo(function RouteStep({ step, checked, onToggle }) {
   );
 });
 
-function ProfileEditor({ profile, setProfile, onClose }) {
+function ProfileEditor({ profile, setProfile, onClose, workerUrl, onWorkerUrlChange, acct, onAccountData }) {
   const [l, setL] = useState(() => normalizeProfile(JSON.parse(JSON.stringify(profile))));
   const cardRef = useRef(null);
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [syncMsg, setSyncMsg] = useState("");
+  const [rsn, setRsn] = useState("");
   const tQ = id => setL(p => ({ ...p, quests: { ...p.quests, [id]: !p.quests[id] } }));
   const sD = (id, t) => setL(p => ({ ...p, diaries: { ...p.diaries, [id]: t } }));
   const tT = id => setL(p => ({ ...p, teleports: { ...p.teleports, [id]: !p.teleports[id] } }));
   const tU = id => setL(p => ({ ...p, unlocks: { ...p.unlocks, [id]: !p.unlocks[id] } }));
   const sLvl = v => setL(p => ({ ...p, farmingLevel: Math.min(99, Math.max(1, Math.round(Number(v) || 1))) }));
   const save = () => { const ok = saveProfile(l); setProfile(l); if (!ok) alert("Couldn't save to browser storage (private mode or full). Your changes apply for this session only."); onClose(); };
+
+  // Pull Farming level + quests + diaries + bank-seed data from the GIM Worker.
+  const doGimSync = async () => {
+    if (!workerUrl) { setSyncMsg("Enter your Worker URL first (see worker/README.md)."); return; }
+    setSyncBusy(true); setSyncMsg("Syncing…");
+    try {
+      const r = await fetch(workerUrl, { cache: "no-store" });
+      const d = await r.json().catch(() => null);
+      if (!r.ok || !d || d.error) throw new Error((d && d.error) || ("HTTP " + r.status));
+      setL(p => normalizeProfile({
+        ...p,
+        farmingLevel: Number.isFinite(d.farmingLevel) ? d.farmingLevel : p.farmingLevel,
+        quests: { ...p.quests, ...(d.quests || {}) },
+        diaries: { ...p.diaries, ...(d.diaries || {}) },
+      }));
+      onAccountData?.(d);
+      const nq = Object.values(d.quests || {}).filter(Boolean).length;
+      const nd = Object.values(d.diaries || {}).filter(t => t && t !== "None").length;
+      const ns = Object.values(d.seeds || {}).filter(Boolean).length;
+      setSyncMsg(`✓ Synced — Farming ${d.farmingLevel}, ${nq} quests, ${nd} diaries, seeds for ${ns} patch types. (Teleports/unlocks stay manual.)`);
+    } catch (e) {
+      setSyncMsg("Sync failed: " + e.message + ". Check the Worker URL and that it's deployed.");
+    } finally { setSyncBusy(false); }
+  };
+
+  // Fallback: set just Farming level from a username via WiseOldMan (no setup, CORS-ok).
+  const doWomLevel = async () => {
+    const name = rsn.trim();
+    if (!name) { setSyncMsg("Enter a username for the level lookup."); return; }
+    setSyncBusy(true); setSyncMsg("Looking up…");
+    try {
+      const r = await fetch("https://api.wiseoldman.net/v2/players/" + encodeURIComponent(name));
+      if (!r.ok) throw new Error(r.status === 404 ? "player not found / not tracked" : "HTTP " + r.status);
+      const d = await r.json();
+      const lvl = d?.latestSnapshot?.data?.skills?.farming?.level;
+      if (!Number.isFinite(lvl)) throw new Error("no Farming level in response");
+      setL(p => normalizeProfile({ ...p, farmingLevel: lvl }));
+      setSyncMsg(`✓ Set Farming level to ${lvl} from WiseOldMan.`);
+    } catch (e) {
+      setSyncMsg("Lookup failed: " + e.message);
+    } finally { setSyncBusy(false); }
+  };
 
   // Close on Escape; move focus into the dialog on open.
   useEffect(() => {
@@ -164,6 +209,38 @@ function ProfileEditor({ profile, setProfile, onClose }) {
           <button onClick={onClose} aria-label="Close profile editor" style={{ background: "none", border: "none", color: "#999", fontSize: 24, cursor: "pointer" }}>✕</button>
         </div>
         <div style={{ padding: "0 24px 24px" }}>
+          {/* Account Sync */}
+          <div style={{ marginBottom: 24, padding: 14, borderRadius: 8, background: "#15201a", border: "1px solid #234a2a" }}>
+            <h3 style={{ margin: "0 0 4px", color: "#7bd88f", fontSize: 14, textTransform: "uppercase", letterSpacing: 1 }}>Account Sync</h3>
+            <p style={{ margin: "0 0 10px", color: "#8a8a8a", fontSize: 11 }}>
+              Auto-fill Farming level, quests &amp; diaries — and tell the optimizer which seeds you own — from your Group Ironman tracker. Needs the Cloudflare Worker from <code style={{ color: "#9a9a9a" }}>worker/README.md</code> (your token stays private).
+            </p>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <input
+                type="url" value={workerUrl || ""} placeholder="https://…workers.dev"
+                onChange={e => onWorkerUrlChange?.(e.target.value)}
+                aria-label="GIM Worker URL"
+                style={{ flex: "1 1 240px", minWidth: 0, background: "#111", color: "#cde", border: "1px solid #2a4a32", borderRadius: 6, padding: "8px 10px", fontSize: 13 }}
+              />
+              <button onClick={doGimSync} disabled={syncBusy} style={{ background: syncBusy ? "#2a3a2a" : "linear-gradient(135deg, #4a8844, #2a5528)", border: "none", color: "#eafae6", padding: "8px 16px", borderRadius: 6, cursor: syncBusy ? "wait" : "pointer", fontSize: 13, fontWeight: 700 }}>
+                {syncBusy ? "Working…" : "Sync from my GIM account"}
+              </button>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 8 }}>
+              <input
+                type="text" value={rsn} placeholder="OSRS username (Farming level only)"
+                onChange={e => setRsn(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") doWomLevel(); }}
+                aria-label="OSRS username for WiseOldMan level lookup"
+                style={{ flex: "1 1 240px", minWidth: 0, background: "#111", color: "#cde", border: "1px solid #333", borderRadius: 6, padding: "8px 10px", fontSize: 13 }}
+              />
+              <button onClick={doWomLevel} disabled={syncBusy} style={{ background: "#222", border: "1px solid #444", color: "#bbb", padding: "8px 16px", borderRadius: 6, cursor: syncBusy ? "wait" : "pointer", fontSize: 13 }}>
+                Fill level from username
+              </button>
+            </div>
+            {syncMsg && <div style={{ marginTop: 8, fontSize: 12, color: syncMsg.startsWith("✓") ? "#7bd88f" : syncMsg.includes("fail") || syncMsg.includes("Enter") ? "#e0a050" : "#8a8a8a" }}>{syncMsg}</div>}
+            {acct?.updatedAt && <div style={{ marginTop: 6, fontSize: 11, color: "#667" }}>Bank/account data last synced: {new Date(acct.updatedAt).toLocaleString()}</div>}
+          </div>
           {/* Farming level */}
           <div style={{ marginBottom: 24 }}>
             <h3 style={{ margin: "0 0 10px", color: "#c9a84c", fontSize: 14, textTransform: "uppercase", letterSpacing: 1 }}>Farming Level</h3>
@@ -254,15 +331,29 @@ export default function App() {
     saveSession({ selTypes, cropSelections, route, checked, showRoute, showCropSelect });
   }, [selTypes, cropSelections, route, checked, showRoute, showCropSelect]);
 
+  // Account sync (GIM Worker URL + last synced AccountData for bank-aware gating).
+  const [workerUrl, setWorkerUrl] = useState(() => loadSync().workerUrl || "");
+  const [acct, setAcct] = useState(loadAcct);
+  const onWorkerUrlChange = u => { setWorkerUrl(u); saveSync({ workerUrl: u }); };
+  const onAccountData = d => { setAcct(d); saveAcct(d); };
+  // Owned seed names from the last sync (null => no bank data => no seed restriction).
+  const ownedSeeds = acct && Array.isArray(acct.ownedSeedNames) ? acct.ownedSeedNames : null;
+  // { type: bool } — can plant something of this type (farming level + owned seeds).
+  const plantableByType = useMemo(() => plantableSeedTypes(prof, ownedSeeds), [prof, acct]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Selected types we have to skip because the bank has no plantable seed for them.
+  const blockedTypes = acct ? selTypes.filter(t => plantableByType[t] === false) : [];
+  const genTypes = selTypes.filter(t => !blockedTypes.includes(t));
+
   const handleSave = p => setProf(p);
   const toggleType = id => setSelTypes(p => p.includes(id) ? p.filter(t => t !== id) : [...p, id]);
-  // How many patches are actually reachable for the current profile + selection.
-  const reachableCount = selTypes.reduce((n, t) => n + PATCHES.filter(p => p.type === t && meetsReqs(p, prof)).length, 0);
+  // Patches reachable (profile/teleport-wise) among the seed-plantable selected types.
+  const reachableCount = genTypes.reduce((n, t) => n + PATCHES.filter(p => p.type === t && meetsReqs(p, prof)).length, 0);
+  const canGo = !!genTypes.length && !isProfileEmpty(prof) && reachableCount > 0;
   const go = () => {
-    if (reachableCount === 0) return; // nothing to plan
+    if (!canGo) return; // nothing plantable + reachable to plan
     const defaults = {};
     const lvl = prof.farmingLevel || 1;
-    for (const t of selTypes) {
+    for (const t of genTypes) {
       if (!cropSelections[t] && CROPS[t] && CROPS[t].length > 0) {
         // Bush and cactus default to "pick only" since they usually don't need replanting
         if (t === "bush" || t === "cactus") {
@@ -278,7 +369,8 @@ export default function App() {
     setShowCropSelect(true);
   };
   const goGenerate = () => {
-    setRoute(generateRoute(selTypes, prof, cropSelections));
+    // Generate only for types we can actually plant (skip seed-blocked ones).
+    setRoute(generateRoute(genTypes, prof, cropSelections));
     setChecked({});
     setShowCropSelect(false);
     setShowRoute(true);
@@ -328,7 +420,6 @@ export default function App() {
     { name: "All Trees", types: ["tree", "fruitTree", "calquat"] },
     { name: "Everything", types: PATCH_TYPES.map(p => p.id) },
   ];
-  const canGo = !!selTypes.length && !isProfileEmpty(prof) && reachableCount > 0;
 
   return (
     <div style={{ minHeight: "100vh", background: "#111", color: "#ccc", fontFamily: "'Crimson Text', Georgia, serif" }}>
@@ -398,17 +489,23 @@ export default function App() {
                 {PATCH_TYPES.map(pt => {
                   const sel = selTypes.includes(pt.id);
                   const cnt = PATCHES.filter(p => p.type === pt.id && meetsReqs(p, prof)).length;
-                  return <button key={pt.id} onClick={() => toggleType(pt.id)} style={{ display: "flex", alignItems: "center", gap: 8, padding: 12, borderRadius: 10, cursor: "pointer", background: sel ? pt.color + "15" : "#1a1a1a", border: `2px solid ${sel ? pt.color + "66" : "#2a2a2a"}`, color: sel ? pt.color : "#666", fontFamily: "'Crimson Text', serif", fontSize: 14, fontWeight: 600, textAlign: "left" }}>
+                  const noSeed = !!acct && plantableByType[pt.id] === false;
+                  return <button key={pt.id} onClick={() => toggleType(pt.id)} title={noSeed ? "No seed for this patch type that you can plant at your Farming level is in your bank" : undefined} style={{ display: "flex", alignItems: "center", gap: 8, padding: 12, borderRadius: 10, cursor: "pointer", background: sel ? pt.color + "15" : "#1a1a1a", border: `2px solid ${sel ? pt.color + "66" : "#2a2a2a"}`, color: sel ? pt.color : "#666", fontFamily: "'Crimson Text', serif", fontSize: 14, fontWeight: 600, textAlign: "left", opacity: noSeed ? 0.5 : 1 }}>
                     <span style={{ fontSize: 20 }}>{pt.icon}</span>
-                    <div><div>{pt.label}</div><div style={{ fontSize: 11, color: sel ? pt.color : "#8a8a8a", fontWeight: 400 }}>{cnt} patch{cnt !== 1 ? "es" : ""}</div></div>
+                    <div><div>{pt.label}</div><div style={{ fontSize: 11, color: noSeed ? "#cc8a55" : sel ? pt.color : "#8a8a8a", fontWeight: 400 }}>{noSeed ? "no seeds in bank" : `${cnt} patch${cnt !== 1 ? "es" : ""}`}</div></div>
                   </button>;
                 })}
               </div>
             </div>
+            {blockedTypes.length > 0 && (
+              <div style={{ marginBottom: 12, padding: "10px 12px", borderRadius: 8, background: "#2a2110", border: "1px solid #4a3a18", fontSize: 12, color: "#e0a050" }}>
+                🌱 Skipping {blockedTypes.map(t => PATCH_TYPES.find(p => p.id === t)?.label || t).join(", ")} — no seeds you can plant at Farming {prof.farmingLevel} are in your bank. Buy seeds, raise your level, or re-sync after banking.
+              </div>
+            )}
             <button onClick={go} disabled={!canGo} style={{ width: "100%", padding: 16, borderRadius: 12, border: "none", background: canGo ? "linear-gradient(135deg, #c9a84c, #8b7028)" : "#333", color: canGo ? "#1a1a1a" : "#888", fontSize: 16, fontWeight: 800, fontFamily: "'Cinzel', serif", letterSpacing: 1, cursor: canGo ? "pointer" : "not-allowed", boxShadow: canGo ? "0 4px 20px rgba(201,168,76,0.3)" : "none" }}>
-              {isProfileEmpty(prof) ? "⚙ Set Up Profile First" : !selTypes.length ? "Select at Least One Patch Type" : reachableCount === 0 ? "No reachable patches for this selection" : "Generate Optimal Route →"}
+              {isProfileEmpty(prof) ? "⚙ Set Up Profile First" : !selTypes.length ? "Select at Least One Patch Type" : !genTypes.length ? "No plantable seeds for this selection" : reachableCount === 0 ? "No reachable patches for this selection" : "Generate Optimal Route →"}
             </button>
-            {!isProfileEmpty(prof) && !!selTypes.length && reachableCount === 0 && (
+            {!isProfileEmpty(prof) && genTypes.length > 0 && reachableCount === 0 && (
               <div style={{ marginTop: 10, fontSize: 12, color: "#cc8a55", textAlign: "center" }}>None of the selected patch types are reachable with your current profile. Try enabling more teleports/unlocks, raising your Farming level, or picking other patch types.</div>
             )}
             <div style={{ marginTop: 28, padding: 16, background: "#1a1a1a", borderRadius: 10, border: `1px solid ${isProfileEmpty(prof) ? "#44220088" : "#2a2a2a"}` }}>
@@ -440,7 +537,7 @@ export default function App() {
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 24 }}>
-              {selTypes.filter(t => CROPS[t] && CROPS[t].length > 0).map(typeId => {
+              {genTypes.filter(t => CROPS[t] && CROPS[t].length > 0).map(typeId => {
                 const pt = PATCH_TYPES.find(p => p.id === typeId);
                 const crops = CROPS[typeId];
                 const patchCount = PATCHES.filter(p => p.type === typeId && meetsReqs(p, prof)).length;
@@ -596,7 +693,7 @@ export default function App() {
         )}
       </main>
 
-      {showProf && <ProfileEditor profile={prof} setProfile={handleSave} onClose={() => setShowProf(false)} />}
+      {showProf && <ProfileEditor profile={prof} setProfile={handleSave} onClose={() => setShowProf(false)} workerUrl={workerUrl} onWorkerUrlChange={onWorkerUrlChange} acct={acct} onAccountData={onAccountData} />}
     </div>
   );
 }

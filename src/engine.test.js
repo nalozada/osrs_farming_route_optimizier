@@ -7,6 +7,9 @@ import {
   meetsReqs,
   generateRoute,
   getAllRouteItems,
+  plantableSeedTypes,
+  hasPlantableSeed,
+  baseSeedName,
 } from "./engine.js";
 
 const patch = id => PATCHES.find(p => p.id === id);
@@ -117,5 +120,43 @@ describe("generateRoute", () => {
     const { equipment, farming } = getAllRouteItems(route);
     expect(Array.isArray(equipment)).toBe(true);
     expect(farming.some(it => it.toLowerCase().includes("ranarr"))).toBe(true);
+  });
+});
+
+describe("plantableSeedTypes / hasPlantableSeed (bank-material awareness)", () => {
+  it("baseSeedName strips ×N suffixes", () => {
+    expect(baseSeedName("Potato seed ×3")).toBe("Potato seed");
+    expect(baseSeedName("Ranarr seed")).toBe("Ranarr seed");
+    expect(baseSeedName(null)).toBe(null);
+  });
+
+  it("adds no bank restriction when bank data is absent (still level-gated)", () => {
+    // At 99 with no bank data, every type has a plantable crop => all true.
+    const all = plantableSeedTypes({ farmingLevel: 99 }, null);
+    expect(Object.values(all).every(Boolean)).toBe(true);
+    expect(hasPlantableSeed("herb", { farmingLevel: 99 }, null)).toBe(true);
+    // Level still gates even with no bank data (herb's lowest crop is lvl 9).
+    expect(hasPlantableSeed("herb", { farmingLevel: 1 }, null)).toBe(false);
+  });
+
+  it("requires both farming level AND owning the seed", () => {
+    // Owns only Ranarr seed (herb, lvl 32).
+    const owned = new Set(["Ranarr seed"]);
+    expect(plantableSeedTypes({ farmingLevel: 80 }, owned).herb).toBe(true);
+    expect(plantableSeedTypes({ farmingLevel: 80 }, owned).allotment).toBe(false); // no allotment seed owned
+    // Below Ranarr level => herb false even though owned.
+    expect(plantableSeedTypes({ farmingLevel: 20 }, owned).herb).toBe(false);
+  });
+
+  it("normalizes the bank's plain names against CROPS' ×N seed strings", () => {
+    // Bank stores "Potato seed"; CROPS allotment seed is "Potato seed ×3".
+    expect(plantableSeedTypes({ farmingLevel: 10 }, new Set(["Potato seed"])).allotment).toBe(true);
+  });
+
+  it("pick-only types (bush/cactus) are available without any seed", () => {
+    const r = plantableSeedTypes({ farmingLevel: 99 }, new Set());
+    expect(r.bush).toBe(true);
+    expect(r.cactus).toBe(true);
+    expect(r.herb).toBe(false); // herb has no pick-only crop
   });
 });
