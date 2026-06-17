@@ -38,7 +38,7 @@ function json(body, status, origin) {
 
 function matchesPlayer(name, target) {
   if (!name || !target) return false;
-  const norm = s => s.toLowerCase().replace(/^gim\s+/, "").replace(/ /g, " ").trim();
+  const norm = s => s.toLowerCase().replace(/^gim\s+/, "").trim();
   return norm(name) === norm(target);
 }
 

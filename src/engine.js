@@ -400,6 +400,24 @@ export function saveSession(s) {
   try { localStorage.setItem(SESSION_KEY, JSON.stringify(s)); } catch (e) { /* ignore */ }
 }
 
+// Account-sync settings (the Cloudflare Worker URL) and the last synced AccountData.
+export const SYNC_KEY = "osrs_sync_v1";
+export const ACCT_KEY = "osrs_acct_v1";
+export function loadSync() {
+  try { const s = localStorage.getItem(SYNC_KEY); if (s) return JSON.parse(s); } catch (e) { /* ignore */ }
+  return {};
+}
+export function saveSync(s) {
+  try { localStorage.setItem(SYNC_KEY, JSON.stringify(s)); } catch (e) { /* ignore */ }
+}
+export function loadAcct() {
+  try { const s = localStorage.getItem(ACCT_KEY); if (s) return JSON.parse(s); } catch (e) { /* ignore */ }
+  return null;
+}
+export function saveAcct(a) {
+  try { localStorage.setItem(ACCT_KEY, JSON.stringify(a)); } catch (e) { /* ignore */ }
+}
+
 // ═══════════════════════════════════════════════════════════════
 // BANK-MATERIAL AWARENESS
 // ═══════════════════════════════════════════════════════════════
